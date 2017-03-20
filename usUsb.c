@@ -1604,7 +1604,7 @@ uint8_t usUsb_BlukPacketReceive(usb_device *usbdev, uint8_t *buffer,
 #if defined(NXP_CHIP_18XX)
 	return NXP_BlukPacketReceive(usbdev, buffer, length, actual_length);
 #elif defined(LINUX)
-	return LINUX_BlukPacketReceive(usbdev, buffer, length, actual_length);
+	return LINUX_BlukPacketReceiveTmout(usbdev, buffer, length, actual_length, 2000);
 #elif defined(GP_CHIP)
 	return GP_BlukPacketReceive(usbdev, buffer, length, actual_length);
 #endif
@@ -1630,7 +1630,7 @@ uint8_t usUsb_BlukPacketReceiveStream(usb_device *usbdev, uint8_t *buffer,
 #if defined(NXP_CHIP_18XX)
 	return NXP_BlukPacketReceiveStream(usbdev, buffer, length, actual_length);
 #elif defined(LINUX)
-	return LINUX_BlukPacketReceive(usbdev, buffer, length, actual_length);
+	return LINUX_BlukPacketReceiveTmout(usbdev, buffer, length, actual_length, 2000);
 #elif defined(GP_CHIP)
 	return GP_BlukPacketReceiveStream(usbdev, buffer, length, actual_length);
 #endif

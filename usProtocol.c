@@ -662,8 +662,11 @@ static uint8_t usProtocol_aoaRecvPackage(mux_itunes *uSdev, void **buffer,
 			if(rc >= USB_DISCNT){
 				PRODEBUG("Device Disconncet\r\n");
 				return PROTOCOL_DISCONNECT;
+			}else if(rc == USB_TMOUT){
+				PRODEBUG("Protocol Receive Timeout\r\n");
+				return PROTOCOL_RTIMOUT;
 			}						
-			PRODEBUG("Receive aoa Package Header Error\r\n");
+			PRODEBUG("Receive aoa Package First Error\r\n");
 			return PROTOCOL_REGEN;
 		}
 		if(actual_length < PRO_HDR){
@@ -703,8 +706,11 @@ static uint8_t usProtocol_aoaRecvPackage(mux_itunes *uSdev, void **buffer,
 						if(rc >= USB_DISCNT){
 							PRODEBUG("Device Disconncet\r\n");
 							return PROTOCOL_DISCONNECT;
+						}else if(rc == USB_TMOUT){
+							PRODEBUG("Protocol Receive Timeout\r\n");
+							return PROTOCOL_RTIMOUT;
 						}							
-						PRODEBUG("Receive aoa Package Header Error\r\n");
+						PRODEBUG("Receive aoa Package Header2 Error\r\n");
 						return PROTOCOL_REGEN;
 					}
 					uSdev->prohlen += actual_length;					
@@ -741,8 +747,11 @@ static uint8_t usProtocol_aoaRecvPackage(mux_itunes *uSdev, void **buffer,
 		if(rc >= USB_DISCNT){
 			PRODEBUG("Device Disconncet\r\n");
 			return PROTOCOL_DISCONNECT;
-		}									
-		PRODEBUG("Receive aoa Package Header Error\r\n");
+		}else if(rc == USB_TMOUT){
+			PRODEBUG("Protocol Receive Timeout\r\n");
+			return PROTOCOL_RTIMOUT;
+		}								
+		PRODEBUG("Receive aoa Package Stream Error\r\n");
 		return PROTOCOL_REGEN;
 	}
 
@@ -811,8 +820,11 @@ static uint8_t usProtocol_iosRecvPackage(mux_itunes *uSdev, void **buffer,
 			if(rc >= USB_DISCNT){
 				PRODEBUG("Device Disconncet\r\n");
 				return PROTOCOL_DISCONNECT;
-			}			
-			PRODEBUG("First Receive Package Error[%d]\r\n", rc);
+			}else if(rc == USB_TMOUT){
+				PRODEBUG("Protocol Receive Timeout\r\n");
+				return PROTOCOL_RTIMOUT;
+			}
+			PRODEBUG("First Receive ios Package Error[%d]\r\n", rc);
 			return PROTOCOL_REGEN;
 		}
 		struct mux_header *mhdr =  (struct mux_header *)tbuffer;
@@ -850,8 +862,11 @@ static uint8_t usProtocol_iosRecvPackage(mux_itunes *uSdev, void **buffer,
 				if(rc >= USB_DISCNT){
 					PRODEBUG("Device Disconncet\r\n");
 					return PROTOCOL_DISCONNECT;
+				}else if(rc == USB_TMOUT){
+					PRODEBUG("Protocol Receive Timeout\r\n");
+					return PROTOCOL_RTIMOUT;
 				}							
-				PRODEBUG("Receive ios Package Header Error\r\n");
+				PRODEBUG("Receive ios Package Header2 Error\r\n");
 				return PROTOCOL_REGEN;
 			}
 		}else{
@@ -911,8 +926,11 @@ static uint8_t usProtocol_iosRecvPackage(mux_itunes *uSdev, void **buffer,
 		if(rc >= USB_DISCNT){
 			PRODEBUG("Device Disconncet\r\n");
 			return PROTOCOL_DISCONNECT;
+		}else if(rc == USB_TMOUT){
+			PRODEBUG("Protocol Receive Timeout\r\n");
+			return PROTOCOL_RTIMOUT;
 		}									
-		PRODEBUG("Receive ios Package Header Error\r\n");
+		PRODEBUG("Receive ios Package Stream Error\r\n");
 		return PROTOCOL_REGEN;
 	}
 	if(payload != NULL){

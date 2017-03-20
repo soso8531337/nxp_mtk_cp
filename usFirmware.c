@@ -405,6 +405,7 @@ int usStorage_firmwareUP(uint8_t *buffer, uint32_t recvSize)
 	struct scsi_head scsi;	
 	uint8_t headbuf[PRO_HDR] = {0}; 
 	uint32_t hSize = recvSize;
+	uint8_t res;
 
 	if(recvSize < PRO_HDR){
 		FRIMDEBUG("Frimware Request Error\r\n");
@@ -438,11 +439,16 @@ int usStorage_firmwareUP(uint8_t *buffer, uint32_t recvSize)
 		}
 		while(curSize < scsi.len){
 			uint8_t *pbuffer = NULL;
-			if(usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize)){
-				FRIMDEBUG("usProtocol_RecvPackage Failed IN Firmware\r\n");
-				/*Write to Phone*/
-				scsi.relag = 1;
-				goto sndRes;
+			if((res = usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize)) != 0){
+				if(res == PROTOCOL_RTIMOUT){
+					FRIMDEBUG("Firmware Receive Timeout\r\n");
+					return -1;	
+				}else{
+					FRIMDEBUG("usProtocol_RecvPackage Failed IN Firmware\r\n");
+					/*Write to Phone*/
+					scsi.relag = 1;		
+					goto sndRes;
+				}
 			}
 			hSize+= paySize;
 			if(firminfo == NULL){
@@ -893,12 +899,17 @@ int usStorage_firmwareUP(uint8_t *buffer, uint32_t recvSize)
 			curSize += paySize;
 		}
 		while(curSize < scsi.len){
-			uint8_t *pbuffer = NULL;
-			if(usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize)){
-				FRIMDEBUG("usProtocol_RecvPackage Failed IN Firmware\r\n");
-				/*Write to Phone*/
-				scsi.relag = 1;
-				goto sndRes;
+			uint8_t *pbuffer = NULL, res;
+			if((res = usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize)) != 0){
+				if(res == PROTOCOL_RTIMOUT){
+					FRIMDEBUG("Firmware Receive Timeout\r\n");
+					return -1;	
+				}else{
+					FRIMDEBUG("usProtocol_RecvPackage Failed IN Firmware\r\n");
+					/*Write to Phone*/
+					scsi.relag = 1;
+					goto sndRes;
+				}
 			}
 			hSize+= paySize;
 			if(writeFirmware(fd, pbuffer, paySize) < 0){

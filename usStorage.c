@@ -633,10 +633,14 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 		uint8_t *pbuffer = NULL;
 		paySize = 0;
 		if((rc = usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize))){
-			SDEBUGOUT("usProtocol_RecvPackage Failed\r\n");
-			/*Write to Phone*/
-			header->relag = 1;
-			//usStorage_sendHEAD(header);			
+			if(rc == PROTOCOL_RTIMOUT){
+				SDEBUGOUT("usStorage_diskWRITE Receive Timeout\r\n");
+			}else{
+				SDEBUGOUT("usProtocol_RecvPackage Failed\r\n");
+				/*Write to Phone*/
+				header->relag = 1;				
+				//usStorage_sendHEAD(header);			
+			}
 			return rc;
 		}		
 		hSize+= paySize;
@@ -698,6 +702,7 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 	uint32_t paySize, curSize = 0, secSize = 0, sdivSize = 0;
 	uint32_t addr;	
 	uint8_t sector[USDISK_SECTOR] = {0};
+	uint8_t res;
 
 	if(!buffer || !header){
 		SDEBUGOUT("usStorage_diskWRITE Parameter Error\r\n");
@@ -732,12 +737,16 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 	while(curSize < header->len){
 		uint32_t secCount = 0;
 		uint8_t *ptr = NULL, *pbuffer = NULL;
-		if(usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize)){
-			SDEBUGOUT("usProtocol_RecvPackage Failed\r\n");
-			/*Write to Phone*/
-			header->relag = 1;
-			usStorage_sendHEAD(header);			
-			return 1;
+		if((res = usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize)) != 0){
+			if(res == PROTOCOL_RTIMOUT){
+				SDEBUGOUT("usStorage_diskWRITE Timeout\r\n");
+			}else{
+				SDEBUGOUT("usProtocol_RecvPackage Failed\r\n");
+				/*Write to Phone*/
+				header->relag = 1;
+				usStorage_sendHEAD(header);
+			}
+			return res;
 		}
 		/*add handle size*/		
 		hSize+= paySize;
@@ -891,9 +900,11 @@ static int usStorage_Handle(void)
 	if((rc = usProtocol_RecvPackage((void **)&buffer, 0, &size)) != 0){
 		if(rc == PROTOCOL_DISCONNECT){
 			return PROTOCOL_DISCONNECT;
+		}else if(rc == PROTOCOL_RTIMOUT){
+			return 0;
 		}
 		SDEBUGOUT("usProtocol_RecvPackage Failed\r\n");
-		return 1;
+		return rc;
 	}
 	if(size < PRO_HDR){
 		SDEBUGOUT("usProtocol_RecvPackage Too Small [%d]Bytes\r\n", size);
