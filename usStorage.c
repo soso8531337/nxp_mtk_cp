@@ -1313,6 +1313,7 @@ static uint8_t	GP_notifyDiskChange(void)
 		return ;
 	}
 	while (USB_HostState[GP_USB_DISK] != HOST_STATE_Configured) {
+		MS_Host_USBTask(&UStorage_Interface[GP_USB_DISK]);
 		USB_USBTask(GP_USB_DISK, USB_MODE_Host);
 		continue;
 	}
@@ -1345,6 +1346,7 @@ void vs_main(void *pvParameters)
 				printf("Phone Unttached...\r\n");
 				break;
 			}
+			MS_Host_USBTask(&UStorage_Interface[GP_USB_PHONE]);
 			USB_USBTask(GP_USB_PHONE, USB_MODE_Host);
 			continue;
 		}
