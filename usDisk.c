@@ -122,12 +122,14 @@ static uint8_t usDisk_DeviceDetectHDD(uint8_t type, void *os_priv)
 	/*set os_priv*/
 	usUsb_Init(usbdev, os_priv);
 	/*GEt device description*/
-	memset(&DeviceDescriptorData, 0, sizeof(USB_StdDesDevice_t));
+	memset(&DeviceDescriptorData, 0, sizeof(USB_StdDesDevice_t));	
+	printf("Begin Get Deivec Descriptor...\r\n");
 	if(usUsb_GetDeviceDescriptor(usbdev, &DeviceDescriptorData)){
 		DSKDEBUG("usUusb_GetDeviceDescriptor Failed\r\n");
 		return DISK_REGEN;
 	}
 	
+	printf("Deivec Descriptor bNumConfigurations=%d...\r\n", DeviceDescriptorData.bNumConfigurations);
 	/*Set callback*/	
 	nxp_clminface nxpcall;	
 	nxpcall.callbackInterface = NXP_COMPFUNC_MSC_CLASS;
