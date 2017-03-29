@@ -1059,6 +1059,7 @@ uint8_t usProtocol_SwitchAOAMode(usb_device *usbdev)
 		return PROTOCOL_REGEN;
 	}
 	/*Found Interface Class */
+	usUsb_Print(ConfigDescriptorData, ConfigDescriptorSize);
 	/*Must Set to var, the funciton will change the point*/
 	PtrConfigDescriptorData = ConfigDescriptorData;
 	if (USB_GetNextDescriptorComp(&ConfigDescriptorSize, (void **)&PtrConfigDescriptorData,
