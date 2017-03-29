@@ -1152,8 +1152,6 @@ void EVENT_USB_Host_DeviceUnattached(const uint8_t corenum)
 	uint8_t res;
 	printf(("\r\nDevice Unattached on port %d\r\n"), corenum);
 	//Chip_CREG_DisableUSB0Phy();
-	free_usbmemory(corenum);
-	USB_Disable(corenum, USB_MODE_Host);
 	memset(&(UStorage_Interface[corenum].State), 0x00, sizeof(UStorage_Interface[corenum].State));
 	if(corenum == NXP_USB_DISK){
 		usDisk_DeviceDisConnect(USB_DISK, NULL);
@@ -1166,6 +1164,7 @@ void EVENT_USB_Host_DeviceUnattached(const uint8_t corenum)
 		res = usProtocol_DeviceDisConnect();
 		if(res == 0){
 			printf("No Phone Connceted, so Not Restart NXP\r\n");
+			return;
 		}else{
 			printf("Phone [%d] Connceted Restart NXP[Try Stop Disk]\r\n", res);
 			/*notify i2c to restart nxp*/
@@ -1174,7 +1173,9 @@ void EVENT_USB_Host_DeviceUnattached(const uint8_t corenum)
 			i2c_ioctl(IOCTL_POWER_RESET_I2C, NULL);
 		#endif
 		}
-	}
+	}	
+	free_usbmemory(corenum);
+	USB_Disable(corenum, USB_MODE_Host);
 	/*We Need to init usb driver again, if not usb driver will broken*/
 	sdmmc_waitms2(50);
 	usSys_init(corenum);
@@ -1206,7 +1207,8 @@ void EVENT_USB_Host_HostError(const uint8_t corenum, const uint8_t ErrorCode)
 	printf(("Host Mode Error\r\n"
 			  " -- Error port %d\r\n"
 			  " -- Error Code %d\r\n" ), corenum, ErrorCode);
-	
+	sdmmc_waitms2(50);
+	usSys_init(corenum);	
 	/*notify i2c to restart nxp*/	
 	usDisk_DiskStartStop(0);
 #if defined(HALT_RESTART)					
@@ -1231,6 +1233,8 @@ void EVENT_USB_Host_DeviceEnumerationFailed(const uint8_t corenum,
 			  " -- In State %d\r\n" ),
 			 corenum, ErrorCode, SubErrorCode, USB_HostState[corenum]);
 	printf("Reinit Core:%d\r\n", corenum);
+	sdmmc_waitms2(50);
+	usSys_init(corenum);	
 	/*notify i2c to restart nxp*/	
 	usDisk_DiskStartStop(0);
 #if defined(HALT_RESTART)	
