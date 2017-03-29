@@ -1154,22 +1154,24 @@ static uint8_t GP_SetDeviceConfigDescriptor(usb_device *usbdev, uint8_t cfgindex
 
 static uint8_t GP_ClaimInterface(usb_device *usbdev, nxp_clminface*cPrivate)
 {
-	uint8_t curConfigurations = 1;
+	USB_Descriptor_Endpoint_t*  DataINEndpoint       = NULL;
+	USB_Descriptor_Endpoint_t*  DataOUTEndpoint      = NULL;
+	USB_Descriptor_Interface_t* MassStorageInterface = NULL;
+	uint8_t portnum = 0, curConfigurations = 1;
 	uint16_t ConfigDescriptorSize = 0;
-	uint8_t  ConfigDescriptorData[512];
+	uint8_t  ConfigDescriptorData[512], *PtrConfigDescriptorData = NULL;
 	
 
 	if(!cPrivate){
 		return USB_REPARA;
 	}
 	USB_ClassInfo_MS_Host_t *MSInterfaceInfo = (USB_ClassInfo_MS_Host_t *)(usbdev->os_priv);
-	if(!MSInterfaceInfo){	
-		printf("Parameter is Error...[How stupid]\r\n");
+	if( !MSInterfaceInfo||
+			!cPrivate->callbackEndpoint || !cPrivate->callbackInterface){
 		return USB_REPARA;
 	}
 
-	for(curConfigurations= 1; curConfigurations <= cPrivate->bNumConfigurations; curConfigurations++){		
-		printf("LIBUSB_Host_GetDeviceConfigDescriptor-->curConfigurations=%d\r\n", curConfigurations);
+	for(curConfigurations= 1; curConfigurations <= cPrivate->bNumConfigurations; curConfigurations++){
 		if (LIBUSB_Host_GetDeviceConfigDescriptor(MSInterfaceInfo->Config.PortNumber, 
 								curConfigurations, &ConfigDescriptorSize, ConfigDescriptorData,
 								sizeof(ConfigDescriptorData)) != HOST_GETCONFIG_Successful) {
@@ -1179,25 +1181,92 @@ static uint8_t GP_ClaimInterface(usb_device *usbdev, nxp_clminface*cPrivate)
 		if (DESCRIPTOR_TYPE(ConfigDescriptorData) != DTYPE_Configuration){
 			continue;
 		}		
-		usUsb_Print(ConfigDescriptorData, ConfigDescriptorSize);
+		usUsb_Print(ConfigDescriptorData, ConfigDescriptorSize); 
+		/*Set array name to point var, USB_GetNextDescriptorComp will change point*/
+		PtrConfigDescriptorData = ConfigDescriptorData;		
+		while (!(DataINEndpoint) || !(DataOUTEndpoint)){
+			if (!(MassStorageInterface) ||
+					USB_GetNextDescriptorComp(&ConfigDescriptorSize, (void **)&PtrConfigDescriptorData,
+							cPrivate->callbackEndpoint) != DESCRIPTOR_SEARCH_COMP_Found){
+				if (USB_GetNextDescriptorComp(&ConfigDescriptorSize, (void **)&PtrConfigDescriptorData,
+							cPrivate->callbackInterface) != DESCRIPTOR_SEARCH_COMP_Found){
+					DataINEndpoint	= NULL;
+					DataOUTEndpoint = NULL;
+					MassStorageInterface = NULL;					
+					USBDEBUG("No Found Vaild Interface At Configuration[%d].\r\n", curConfigurations);
+					break;
+				}
+				MassStorageInterface = DESCRIPTOR_PCAST(PtrConfigDescriptorData, USB_Descriptor_Interface_t);
 
-		if (MassStorage_Host_ConfigurePipes(MSInterfaceInfo,
-								   ConfigDescriptorSize, ConfigDescriptorData) != MS_ENUMERROR_NoError) {
-			printf("Attached Device Not a Valid Mass Storage Device.\r\n");
-			continue;
+				DataINEndpoint  = NULL;
+				DataOUTEndpoint = NULL;
+
+				continue;
+			}
+
+			USB_Descriptor_Endpoint_t* EndpointData = DESCRIPTOR_PCAST(PtrConfigDescriptorData, USB_Descriptor_Endpoint_t);
+
+			if ((EndpointData->EndpointAddress & ENDPOINT_DIR_MASK) == ENDPOINT_DIR_IN){
+				DataINEndpoint  = EndpointData;				
+				USBDEBUG("Found Vaild INInterface At Configuration[%d].\r\n", curConfigurations);
+			}else{
+				DataOUTEndpoint = EndpointData;				
+				USBDEBUG("Found Vaild OUTInterface At Configuration[%d].\r\n", curConfigurations);
+			}			
+		}
+		if(DataINEndpoint && DataOUTEndpoint){
+			break;
 		}
 	}
-	if(curConfigurations > cPrivate->bNumConfigurations){
-		printf("No Found Suitable Interface.\r\n");
+	if(!(DataINEndpoint) || !(DataOUTEndpoint) ||
+			(curConfigurations > cPrivate->bNumConfigurations)){
+		USBDEBUG("No Found Suitable Interface.\r\n");
 		return USB_REGEN;
 	}
-	
+	memset(&MSInterfaceInfo->State, 0x00, sizeof(MSInterfaceInfo->State));	
+	portnum = MSInterfaceInfo->Config.PortNumber;
+	for (uint8_t PipeNum = 1; PipeNum < PIPE_TOTAL_PIPES; PipeNum++){
+		uint16_t Size;
+		uint8_t  Type;
+		uint8_t  Token;
+		uint8_t  EndpointAddress;
+		bool     DoubleBanked;
+
+		if (PipeNum == MSInterfaceInfo->Config.DataINPipeNumber){
+			Size            = le16_to_cpu(DataINEndpoint->EndpointSize);
+			EndpointAddress = DataINEndpoint->EndpointAddress;
+			Token           = PIPE_TOKEN_IN;
+			Type            = EP_TYPE_BULK;
+			DoubleBanked    = MSInterfaceInfo->Config.DataINPipeDoubleBank;
+
+			MSInterfaceInfo->State.DataINPipeSize = DataINEndpoint->EndpointSize;
+			
+		}else if (PipeNum == MSInterfaceInfo->Config.DataOUTPipeNumber){
+			Size            = le16_to_cpu(DataOUTEndpoint->EndpointSize);
+			EndpointAddress = DataOUTEndpoint->EndpointAddress;
+			Token           = PIPE_TOKEN_OUT;
+			Type            = EP_TYPE_BULK;
+			DoubleBanked    = MSInterfaceInfo->Config.DataOUTPipeDoubleBank;
+			
+			MSInterfaceInfo->State.DataOUTPipeSize = DataOUTEndpoint->EndpointSize;
+		}else{
+			continue;
+		}
+
+		if (!(Pipe_ConfigurePipe(portnum,PipeNum, Type, Token, EndpointAddress, Size,
+		                         DoubleBanked ? PIPE_BANK_DOUBLE : PIPE_BANK_SINGLE))){
+			return USB_REGEN;
+		}
+	}
+
 	/*Set Configuration*/
 	if(GP_SetDeviceConfigDescriptor(usbdev, curConfigurations)){
 		USBDEBUG("Error Setting Device Configuration.\r\n");
 		return USB_REGEN;
 	}
-	
+
+	MSInterfaceInfo->State.InterfaceNumber = MassStorageInterface->InterfaceNumber;
+	MSInterfaceInfo->State.IsActive = true;
 	/*Set the usbdev struct*/
 	usbdev->device_address= MSInterfaceInfo->Config.PortNumber;
 	usbdev->wMaxPacketSize = MSInterfaceInfo->State.DataOUTPipeSize;
