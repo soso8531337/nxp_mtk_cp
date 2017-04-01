@@ -1009,44 +1009,6 @@ static uint8_t GP_SendControlRequest(const uint8_t corenum,
 	return LIBUSB_Host_SendControlRequest(corenum,data);
 }
 
-static uint8_t GP_BlukPacketReceiveStream(usb_device *usbdev, uint8_t *buffer, 
-				uint32_t length, uint32_t *actual_length)
-{
-	uint8_t  ErrorCode = PIPE_RWSTREAM_NoError;
-	uint32_t already = 0;
-	const USB_ClassInfo_MS_Host_t *MSInterfaceInfo = (USB_ClassInfo_MS_Host_t *)usbdev->os_priv;
-
-	if(!usbdev || !buffer || !actual_length){
-		return USB_REPARA;
-	}
-	Pipe_SelectPipe(MSInterfaceInfo->Config.PortNumber, 
-			MSInterfaceInfo->Config.DataINPipeNumber);	
-	*actual_length = 0;
-	while (already < length) {
-		uint32_t actual = 0;
-		if(already == 0 && length > 512){
-			/*we must receive 512*n, if it is not 512*n, divide twice*/
-			ErrorCode = Pipe_Streaming(MSInterfaceInfo->Config.PortNumber,
-							buffer, length-length%512, &actual, GP_USB_TIMEOUT);
-		}else{
-			ErrorCode = Pipe_Streaming(MSInterfaceInfo->Config.PortNumber,
-							buffer+already, length-already, &actual, GP_USB_TIMEOUT);
-		}
-		if (ErrorCode) {
-			USBDEBUG("USB Receive Error[%d]\r\n", ErrorCode);
-			return ErrorCode;
-		}
-		already+= actual;
-		*actual_length += actual;
-
-		//USBDEBUG("USB Stream HcdDataTransfer Receive[%d]\r\n", Pipe_BytesInPipe(corenum));
-	}
-
-	USBDEBUG("USB Stream Receive [%d/%dBytes]\r\n", *actual_length, length);
-
-	return USB_REOK;
-}
-
 static uint8_t GP_BlukPacketReceive(usb_device *usbdev, uint8_t *buffer, 
 			uint32_t length, uint32_t *actual_length)
 {
@@ -1066,18 +1028,31 @@ static uint8_t GP_BlukPacketReceive(usb_device *usbdev, uint8_t *buffer,
 		USBDEBUG("USB Receive Error[%d]\r\n", ErrorCode);
 		return ErrorCode;
 	}
-	*actual_length = length;
 	USBDEBUG("USB Receive [%d/%dBytes]\r\n", *actual_length, length);
 
 	return USB_REOK;
 }	
+
+static uint8_t GP_BlukPacketReceiveStream(usb_device *usbdev, uint8_t *buffer, 
+				uint32_t length, uint32_t *actual_length)
+{
+	uint8_t  ErrorCode = PIPE_RWSTREAM_NoError;
+
+	ErrorCode = GP_BlukPacketReceive(usbdev, buffer, length, actual_length);
+	if(ErrorCode){
+		USBDEBUG("USB Stream Receive Error[%d]\r\n", ErrorCode);
+		return ErrorCode;
+	}
+	USBDEBUG("USB Stream Receive [%d/%dBytes]\r\n", *actual_length, length);
+
+	return USB_REOK;
+}
 
 static uint8_t GP_BlukPacketSend(usb_device *usbdev, uint8_t *buffer, 
                                   uint32_t length, uint32_t *actual_length)
 {
 	uint8_t  ErrorCode = PIPE_RWSTREAM_NoError;
 	const USB_ClassInfo_MS_Host_t *MSInterfaceInfo;
-	uint32_t already = 0;
 	
 	if(!usbdev || !buffer || !actual_length){
 		return USB_REPARA;
@@ -1085,28 +1060,17 @@ static uint8_t GP_BlukPacketSend(usb_device *usbdev, uint8_t *buffer,
 	
 	MSInterfaceInfo = (USB_ClassInfo_MS_Host_t *)usbdev->os_priv;
 	Pipe_SelectPipe(MSInterfaceInfo->Config.PortNumber, 
-			MSInterfaceInfo->Config.DataOUTPipeNumber);	
-	*actual_length= 0;
-	while(already < length){
-		uint32_t sndlen = 0;
-		
-		if(already == 0 && length % 512 == 0){
-			ErrorCode = Pipe_Streaming(MSInterfaceInfo->Config.PortNumber,
-								buffer, length-1, &sndlen, GP_USB_TIMEOUT);
-		}else{
-			ErrorCode = Pipe_Streaming(MSInterfaceInfo->Config.PortNumber,
-								buffer+already, length-already, &sndlen, GP_USB_TIMEOUT);
-		}
-		
-		if (ErrorCode) {
-			USBDEBUG("USB Send Error[%d]\r\n", ErrorCode);
-			return ErrorCode;
-		}
-		USBDEBUG("Send PiPe Streaming Write[%dBytes]...\r\n", sndlen);
-		already += sndlen;		
-		*actual_length += sndlen;	
+			MSInterfaceInfo->Config.DataOUTPipeNumber);
+
+	ErrorCode = Pipe_Streaming(MSInterfaceInfo->Config.PortNumber, buffer, 
+					length, actual_length, GP_USB_TIMEOUT);
+
+	if (ErrorCode) {
+		USBDEBUG("USB Send Error[%d]\r\n", ErrorCode);
+		return ErrorCode;
 	}
 	USBDEBUG("USB Send [%d/%dBytes]\r\n", *actual_length, length);
+	
 	return USB_REOK;
 }
 
