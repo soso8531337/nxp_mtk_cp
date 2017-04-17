@@ -37,21 +37,13 @@ struct accessory_t {
 	uint32_t aoa_version;
 	uint16_t vid;
 	uint16_t pid;
-	char *device;
-	char *manufacturer;
-	char *model;
-	char *description;
-	char *version;
-	char *url;
-	char *serial;
-};
-static struct accessory_t acc_default = {
-	.manufacturer = "i4season",
-	.model = "U-Storage",
-	.description = "U-Storage",
-	.version = "1.0",
-	.url = "https://www.simicloud.com/download/index.html",
-	.serial = "0000000012345678",
+	char device[256];
+	char manufacturer[64];
+	char model[64];
+	char description[256];
+	char version[32];
+	char url[1024];
+	char serial[128];
 };
 
 /*****************************************************************************
@@ -233,6 +225,16 @@ typedef struct {
  * Global Var
  ****************************************************************************/
 usStorage_info uSinfo;
+static struct accessory_t acc_default = {
+	.manufacturer = "i4season",
+	.model = "U-Storage",
+	.description = "U-Storage",
+	.version = "1.0",
+	.url = "https://www.simicloud.com/download/index.html",
+	.serial = "0000000012345678",
+};
+static int32_t ios_port = IOS_DEFAULT_PORT;
+
 /*This is the global buffer for send usb data or receive usb data
 * It is very important
 */
@@ -540,7 +542,7 @@ static void resetReceive(void)
 		}
 		memset(&(uSinfo.itunes.tcpinfo), 0, sizeof(uSinfo.itunes.tcpinfo));
 		uSinfo.itunes.tcpinfo.sport = find_sport();
-		uSinfo.itunes.tcpinfo.dport= IOS_DEFAULT_PORT;
+		uSinfo.itunes.tcpinfo.dport= ios_port;
 		uSinfo.itunes.tcpinfo.tx_win = IOS_WIN_SIZE;
 		uSinfo.State = CONN_CONNECTING;
 		PRODEBUG("Reset Finish iPhone Device[v/p=%d:%d]\r\n", 
@@ -1076,11 +1078,11 @@ uint8_t usProtocol_SwitchAOAMode(usb_device *usbdev)
 	acc_default.aoa_version = ((version[1] << 8) | version[0]);
 	PRODEBUG("Found Device supports AOA %d.0!\r\n", acc_default.aoa_version);
 	/* In case of a no_app accessory, the version must be >= 2 */
-	if((acc_default.aoa_version < 2) && !acc_default.manufacturer) {
+	if((acc_default.aoa_version < 2) && !strlen(acc_default.manufacturer)) {
 		PRODEBUG("Connecting without an Android App only for AOA 2.0.\r\n");
 		return PROTOCOL_REGEN;
 	}
-	if(acc_default.manufacturer) {
+	if(strlen(acc_default.manufacturer)) {
 		PRODEBUG("sending manufacturer: %s\r\n", acc_default.manufacturer);
 		if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
 						AOA_SEND_IDENT, 0, AOA_STRING_MAN_ID, 
@@ -1089,7 +1091,7 @@ uint8_t usProtocol_SwitchAOAMode(usb_device *usbdev)
 			return PROTOCOL_REGEN;
 		}
 	}
-	if(acc_default.model) {
+	if(strlen(acc_default.model)) {
 		PRODEBUG("sending model: %s\r\n", acc_default.model);
 		if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
 								AOA_SEND_IDENT, 0, AOA_STRING_MOD_ID, 
@@ -1099,36 +1101,44 @@ uint8_t usProtocol_SwitchAOAMode(usb_device *usbdev)
 		}
 	}
 
-	PRODEBUG("sending description: %s\r\n", acc_default.description);
-	if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
-						AOA_SEND_IDENT, 0, AOA_STRING_DSC_ID, 
-						strlen(acc_default.description) + 1, (uint8_t *)acc_default.description)){
-		PRODEBUG("Could not Set AOA description.\r\n");
-		return PROTOCOL_REGEN;
+	if(strlen(acc_default.description)){
+		PRODEBUG("sending description: %s\r\n", acc_default.description);
+		if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
+							AOA_SEND_IDENT, 0, AOA_STRING_DSC_ID, 
+							strlen(acc_default.description) + 1, (uint8_t *)acc_default.description)){
+			PRODEBUG("Could not Set AOA description.\r\n");
+			return PROTOCOL_REGEN;
+		}
 	}
-
-	PRODEBUG("sending version string: %s\r\n", acc_default.version);
-	if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
-						AOA_SEND_IDENT, 0, AOA_STRING_VER_ID, 
-						strlen(acc_default.version) + 1, (uint8_t *)acc_default.version)){
-		PRODEBUG("Could not Set AOA version.\r\n");
-		return PROTOCOL_REGEN;
+	
+	if(strlen(acc_default.version)){
+		PRODEBUG("sending version string: %s\r\n", acc_default.version);
+		if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
+							AOA_SEND_IDENT, 0, AOA_STRING_VER_ID, 
+							strlen(acc_default.version) + 1, (uint8_t *)acc_default.version)){
+			PRODEBUG("Could not Set AOA version.\r\n");
+			return PROTOCOL_REGEN;
+		}
 	}
-	PRODEBUG("sending url string: %s\r\n", acc_default.url);
-	if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
-						AOA_SEND_IDENT, 0, AOA_STRING_URL_ID, 
-						strlen(acc_default.url) + 1, (uint8_t *)acc_default.url)){
-		PRODEBUG("Could not Set AOA url.\r\n");
-		return PROTOCOL_REGEN;
+	
+	if(strlen(acc_default.url)){
+		PRODEBUG("sending url string: %s\r\n", acc_default.url);
+		if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
+							AOA_SEND_IDENT, 0, AOA_STRING_URL_ID, 
+							strlen(acc_default.url) + 1, (uint8_t *)acc_default.url)){
+			PRODEBUG("Could not Set AOA url.\r\n");
+			return PROTOCOL_REGEN;
+		}
 	}
-	PRODEBUG("sending serial number: %s\r\n", acc_default.serial);
-	if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
-						AOA_SEND_IDENT, 0, AOA_STRING_SER_ID, 
-						strlen(acc_default.serial) + 1, (uint8_t *)acc_default.serial)){
-		PRODEBUG("Could not Set AOA serial.\r\n");
-		return PROTOCOL_REGEN;
+	if(strlen(acc_default.serial)){
+		PRODEBUG("sending serial number: %s\r\n", acc_default.serial);
+		if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
+							AOA_SEND_IDENT, 0, AOA_STRING_SER_ID, 
+							strlen(acc_default.serial) + 1, (uint8_t *)acc_default.serial)){
+			PRODEBUG("Could not Set AOA serial.\r\n");
+			return PROTOCOL_REGEN;
+		}
 	}
-
 	if(usUsb_SendControlRequest(usbdev, REQDIR_HOSTTODEVICE|REQTYPE_VENDOR,
 						AOA_START_ACCESSORY, 0, 0, 0, NULL)){
 		PRODEBUG("Could not Start AOA.\r\n");
@@ -1195,6 +1205,9 @@ static uint8_t LINUX_SwitchAOAMode(libusb_device* dev)
 					intf->bInterfaceClass != INTERFACE_CLASS_AOA){
 			continue;
 		}
+		if(intf->bInterfaceClass == LIBUSB_CLASS_HUB){
+			continue;
+		}		
 		/*Before switch AOA Mode, we need to notify kernel*/
 		LINUX_USBPowerControl(OCTL_DIS_USB_SW);
 		/* Now asking if device supports Android Open Accessory protocol */
@@ -1213,13 +1226,13 @@ static uint8_t LINUX_SwitchAOAMode(libusb_device* dev)
 			PRODEBUG("Device[%d-%d] supports AOA %d.0!\n", bus, address, acc_default.aoa_version);
 		}
 		/* In case of a no_app accessory, the version must be >= 2 */
-		if((acc_default.aoa_version < 2) && !acc_default.manufacturer) {
+		if((acc_default.aoa_version < 2) && !strlen(acc_default.manufacturer)) {
 			PRODEBUG("Connecting without an Android App only for AOA 2.0[%d-%d]\n", bus,address);
 			libusb_free_config_descriptor(config);
 			libusb_close(handle);
 			return PROTOCOL_REGEN;
 		}
-		if(acc_default.manufacturer) {
+		if(strlen(acc_default.manufacturer)) {
 			PRODEBUG("sending manufacturer: %s\n", acc_default.manufacturer);
 			res = libusb_control_transfer(handle,
 						  LIBUSB_ENDPOINT_OUT
@@ -1235,7 +1248,7 @@ static uint8_t LINUX_SwitchAOAMode(libusb_device* dev)
 				return PROTOCOL_REGEN;
 			}
 		}
-		if(acc_default.model) {
+		if(strlen(acc_default.model)) {
 			PRODEBUG("sending model: %s\n", acc_default.model);
 			res = libusb_control_transfer(handle,
 						  LIBUSB_ENDPOINT_OUT
@@ -1252,61 +1265,72 @@ static uint8_t LINUX_SwitchAOAMode(libusb_device* dev)
 			}
 		}
 		
-		PRODEBUG("sending description: %s\n", acc_default.description);
-		res = libusb_control_transfer(handle,
-					  LIBUSB_ENDPOINT_OUT
-					  | LIBUSB_REQUEST_TYPE_VENDOR,
-					  AOA_SEND_IDENT, 0,
-					  AOA_STRING_DSC_ID,
-					  (uint8_t *)acc_default.description,
-					  strlen(acc_default.description) + 1, 0);
-		if(res < 0){
-			PRODEBUG("Could not Set AOA description %d-%d: %d\n", bus, address, res);
-			libusb_free_config_descriptor(config);
-			libusb_close(handle);
-			return PROTOCOL_REGEN;
+		if(strlen(acc_default.description)){
+			PRODEBUG("sending description: %s\n", acc_default.description);
+			res = libusb_control_transfer(handle,
+						  LIBUSB_ENDPOINT_OUT
+						  | LIBUSB_REQUEST_TYPE_VENDOR,
+						  AOA_SEND_IDENT, 0,
+						  AOA_STRING_DSC_ID,
+						  (uint8_t *)acc_default.description,
+						  strlen(acc_default.description) + 1, 0);
+			if(res < 0){
+				PRODEBUG("Could not Set AOA description %d-%d: %d\n", bus, address, res);
+				libusb_free_config_descriptor(config);
+				libusb_close(handle);
+				return PROTOCOL_REGEN;
+			}
 		}
-		PRODEBUG("sending version string: %s\n", acc_default.version);
-		res = libusb_control_transfer(handle,
-					  LIBUSB_ENDPOINT_OUT
-					  | LIBUSB_REQUEST_TYPE_VENDOR,
-					  AOA_SEND_IDENT, 0,
-					  AOA_STRING_VER_ID,
-					  (uint8_t *)acc_default.version,
-					  strlen(acc_default.version) + 1, 0);
-		if(res < 0){
-			PRODEBUG("Could not Set AOA version %d-%d: %d\n", bus, address, res);
-			libusb_free_config_descriptor(config);
-			libusb_close(handle);
-			return PROTOCOL_REGEN;
+		
+		if(strlen(acc_default.version)){
+			PRODEBUG("sending version string: %s\n", acc_default.version);
+			res = libusb_control_transfer(handle,
+						  LIBUSB_ENDPOINT_OUT
+						  | LIBUSB_REQUEST_TYPE_VENDOR,
+						  AOA_SEND_IDENT, 0,
+						  AOA_STRING_VER_ID,
+						  (uint8_t *)acc_default.version,
+						  strlen(acc_default.version) + 1, 0);
+			if(res < 0){
+				PRODEBUG("Could not Set AOA version %d-%d: %d\n", bus, address, res);
+				libusb_free_config_descriptor(config);
+				libusb_close(handle);
+				return PROTOCOL_REGEN;
+			}
 		}
-		PRODEBUG("sending url string: %s\n", acc_default.url);
-		res = libusb_control_transfer(handle,
-					  LIBUSB_ENDPOINT_OUT
-					  | LIBUSB_REQUEST_TYPE_VENDOR,
-					  AOA_SEND_IDENT, 0,
-					  AOA_STRING_URL_ID,
-					  (uint8_t *)acc_default.url,
-					  strlen(acc_default.url) + 1, 0);
-		if(res < 0){
-			PRODEBUG("Could not Set AOA url %d-%d: %d\n", bus, address, res);
-			libusb_free_config_descriptor(config);
-			libusb_close(handle);
-			return PROTOCOL_REGEN;
+		
+		if(strlen(acc_default.url)){
+			PRODEBUG("sending url string: %s\n", acc_default.url);
+			res = libusb_control_transfer(handle,
+						  LIBUSB_ENDPOINT_OUT
+						  | LIBUSB_REQUEST_TYPE_VENDOR,
+						  AOA_SEND_IDENT, 0,
+						  AOA_STRING_URL_ID,
+						  (uint8_t *)acc_default.url,
+						  strlen(acc_default.url) + 1, 0);
+			if(res < 0){
+				PRODEBUG("Could not Set AOA url %d-%d: %d\n", bus, address, res);
+				libusb_free_config_descriptor(config);
+				libusb_close(handle);
+				return PROTOCOL_REGEN;
+			}
 		}
-		PRODEBUG("sending serial number: %s\n", acc_default.serial);
-		res = libusb_control_transfer(handle,
-					  LIBUSB_ENDPOINT_OUT
-					  | LIBUSB_REQUEST_TYPE_VENDOR,
-					  AOA_SEND_IDENT, 0,
-					  AOA_STRING_SER_ID,
-					  (uint8_t *)acc_default.serial,
-					  strlen(acc_default.serial) + 1, 0);
-		if(res < 0){
-			PRODEBUG("Could not Set AOA serial %d-%d: %d\n", bus, address, res);
-			libusb_free_config_descriptor(config);
-			libusb_close(handle);
-			return PROTOCOL_REGEN;
+
+		if(strlen(acc_default.serial)){
+			PRODEBUG("sending serial number: %s\n", acc_default.serial);
+			res = libusb_control_transfer(handle,
+						  LIBUSB_ENDPOINT_OUT
+						  | LIBUSB_REQUEST_TYPE_VENDOR,
+						  AOA_SEND_IDENT, 0,
+						  AOA_STRING_SER_ID,
+						  (uint8_t *)acc_default.serial,
+						  strlen(acc_default.serial) + 1, 0);
+			if(res < 0){
+				PRODEBUG("Could not Set AOA serial %d-%d: %d\n", bus, address, res);
+				libusb_free_config_descriptor(config);
+				libusb_close(handle);
+				return PROTOCOL_REGEN;
+			}
 		}
 		res = libusb_control_transfer(handle,
 					  LIBUSB_ENDPOINT_OUT |
@@ -1353,7 +1377,7 @@ uint8_t usProtocol_GetIOSVersion(mux_itunes *uSdev)
 	/*confirm source dest port*/
 	memset(&(uSdev->tcpinfo), 0, sizeof(uSdev->tcpinfo));
 	uSdev->tcpinfo.sport = find_sport();
-	uSdev->tcpinfo.dport= IOS_DEFAULT_PORT;
+	uSdev->tcpinfo.dport= ios_port;
 	uSdev->tcpinfo.tx_win = IOS_WIN_SIZE;	
 	/*Begin to conncet to iPhone*/
 	/*1.request PROTOCOL_VERSION*/
@@ -1595,6 +1619,25 @@ uint8_t usProtocol_DeviceDisConnect(void)
 	return typePhone;
 }
 
+uint8_t usProtocol_init(void)
+{
+
+#if defined(USTOR_ZEBAO)
+	strcpy(acc_default.manufacturer, "Ravpower");
+	strcpy(acc_default.model, "RP-UM001");
+	strcpy(acc_default.description, "RP-UM001");
+	strcpy(acc_default.version, "2.000.000");
+#endif
+
+	/*Print Special configuration*/
+	printf("Configuration:\r\n\tVendor:%s\r\n\tMode:%s\r\n\tDescription:%s\r\n"
+				"\tVersion:%s\r\n\tURL:%s\r\n\tSerical:%s\r\n\tiosPort:%d\r\n", acc_default.manufacturer,
+			acc_default.model, acc_default.description, acc_default.version, acc_default.url,
+			acc_default.serial, ios_port);
+
+	return PROTOCOL_REOK;
+}
+
 #elif defined(LINUX)
 
 /*Global Var*/
@@ -1806,6 +1849,61 @@ uint8_t usProtocol_DeviceDetect(void *os_priv)
 	
 	return PROTOCOL_REGEN;
 }
+
+uint8_t usProtocol_init(void)
+{
+	FILE *fp;
+	char line[256] = {0}, key[128], value[128];	
+	char vendor[64] = {0};
+	struct accessory_t ustorConf;
+
+	memset(&ustorConf, 0, sizeof(struct accessory_t));
+	/*Get Firmware Info*/
+	fp = fopen("/etc/firmware", "r");
+	if(fp == NULL){
+		PRODEBUG("Open /etc/firmware Failed:%s\r\n", strerror(errno));
+		return PROTOCOL_REGEN;
+	}
+	while (fgets(line, sizeof(line), fp)) {
+		memset(key, 0, sizeof(key));
+		memset(value, 0, sizeof(value));		
+		if (sscanf(line, "%[^=]=%[^\n ]",
+					key, value) != 2)
+			continue;
+		if(!strcasecmp(key, "ustor-VENDOR")){			
+			strncpy(ustorConf.manufacturer, value, sizeof(ustorConf.manufacturer)-1);			
+		}else if(!strcasecmp(key, "ustor-Model")){
+			strncpy(ustorConf.model, value, sizeof(ustorConf.model)-1);			
+		}else if(!strcasecmp(key, "ustor-Description")){
+			strncpy(ustorConf.description, value, sizeof(ustorConf.description)-1);			
+		}else if(!strcasecmp(key, "ustor-Version")){
+			strncpy(ustorConf.version, value, sizeof(ustorConf.version)-1);			
+		}else if(!strcasecmp(key, "ustor-URL")){
+			strncpy(ustorConf.url, value, sizeof(ustorConf.url)-1);
+		}else if(!strcasecmp(key, "ustor-Serical")){
+			strncpy(ustorConf.serial, value, sizeof(ustorConf.serial)-1);
+		}else if(!strcasecmp(key, "ustor-Port")){
+			ios_port = atoi(value);
+		}
+	}
+	fclose(fp);
+	/*Use Default cardid*/
+	if(!strlen(ustorConf.manufacturer) || !strlen(ustorConf.model)
+			|| !strlen(ustorConf.version)){
+		PRODEBUG("Use Default Configuration\r\n");
+	}else{
+		PRODEBUG("Use Special Configuration\r\n");
+		memcpy(&acc_default, &ustorConf, sizeof(struct accessory_t));
+	}
+	/*Print Special configuration*/
+	PRODEBUG("Configuration:\r\n\tVendor:%s\n\tMode:%s\n\tDescription:%s\n"
+				"\tVersion:%s\n\tURL:%s\n\tSerical:%s\n\tiosPort:%d\n", acc_default.manufacturer,
+			acc_default.model, acc_default.description, acc_default.version, acc_default.url,
+			acc_default.serial, ios_port);
+
+	return PROTOCOL_REOK;
+}
+
 #endif
 
 uint8_t usProtocol_GetAvaiableBuffer(void **buffer, uint32_t *size)

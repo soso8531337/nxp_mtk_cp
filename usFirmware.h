@@ -29,6 +29,7 @@ struct firmwareHeader{
 
 int usStorage_firmwareINFO(struct scsi_head *header);
 int usStorage_firmwareUP(uint8_t *buffer, uint32_t recvSize);
+int usStorage_firmwareLicense(uint8_t *buffer, uint32_t recvSize);
 
 
 #ifdef __cplusplus

@@ -632,7 +632,7 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 	while(curSize < header->len){
 		uint8_t *pbuffer = NULL;
 		paySize = 0;
-		if((rc = usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize))){
+		if((rc = usProtocol_RecvPackage((void **)&pbuffer, hSize, &paySize)) != 0){
 			if(rc == PROTOCOL_RTIMOUT){
 				SDEBUGOUT("usStorage_diskWRITE Receive Timeout\r\n");
 			}else{
@@ -684,7 +684,7 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 	}
 
 	/*Write to Phone*/
-	if((rc = usStorage_sendHEAD(header))){
+	if((rc = usStorage_sendHEAD(header)) != 0){
 		SDEBUGOUT("Error Send Header\r\n");
 		return rc;
 	}
@@ -939,6 +939,8 @@ static int usStorage_Handle(void)
 			return usStorage_firmwareINFO(&header);
 		case SCSI_SYNC_INFO:
 			return usStorage_cacheSYNC(&header);
+		case SCSI_WRITE_LIC:
+			return usStorage_firmwareLicense(buffer, size);
 		default:
 			SDEBUGOUT("Unhandle Command\r\nheader:%x\r\nwtag:%d\r\n"
 						"ctrid:%d\r\naddr:%u\r\nlen:%d\r\nwlun:%d\r\n", header.head,
@@ -1098,6 +1100,8 @@ void vs_main(void *pvParameters)
 	SetupHardware();
 
 	SDEBUGOUT("U-Storage Running.\r\n");
+	
+	usProtocol_init();
 	xTaskCreate(vs_main_disk, "vTaskDisk", 1024,
 			NULL, (tskIDLE_PRIORITY + 2UL), (TaskHandle_t *) NULL);
 
@@ -1356,7 +1360,8 @@ void vs_main(void *pvParameters)
 {
 	SetupHardware();
 
-	SDEBUGOUT("U-Storage Running.\r\n");
+	SDEBUGOUT("U-Storage Running.\r\n");	
+	usProtocol_init();
 	xTaskCreate(vs_main_disk, "vTaskDisk", 1024,
 			NULL, (tskIDLE_PRIORITY + 2UL), (TaskHandle_t *) NULL);
 
@@ -1968,6 +1973,7 @@ int main(int argc, char **argv)
 		daemonize();
 		handler_sig();
 	}
+	usProtocol_init();
 	memset(&usbLinux, 0, sizeof(usbStatus));
 	if (pthread_create(&diskThread, NULL, vs_main_disk, NULL) != 0) {
 		SDEBUGOUT("ERROR: Could not start disk thread!\r\n");
@@ -1978,7 +1984,7 @@ int main(int argc, char **argv)
 		phoneStatus = usbLinux.usbPhoneStatus;
 		if (phoneStatus && usProtocol_DeviceDetect(NULL)) {
 			SDEBUGOUT("Detect Phone Failed.\r\n");
-			usleep(200000);
+			usleep(500000);
 			continue;
 		}else if(!phoneStatus){			
 			SDEBUGOUT("Wait Phone Plug IN.\r\n");

@@ -6,12 +6,12 @@
 extern "C" {
 #endif
 
-#define NXP_CHIP_18XX 1
+//#define NXP_CHIP_18XX 1
 //#define GP_CHIP		1
-//#define LINUX   1
-//#ifndef DEBUG_ENABLE
-//#define DEBUG_ENABLE1    1
-//#endif
+#define LINUX   1
+#ifndef DEBUG_ENABLE
+#define DEBUG_ENABLE1    1
+#endif
 
 #if defined(LINUX)
 #define ENOUGH_MEMORY	1

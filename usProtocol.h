@@ -36,7 +36,7 @@ enum{
 	PROTOCOL_DISCONNECT,
 	PROTOCOL_REINVAILD
 };
-
+uint8_t usProtocol_init(void);
 uint8_t usProtocol_DeviceDetect(void *os_priv);
 uint8_t usProtocol_ConnectPhone(void);
 uint8_t usProtocol_DeviceDisConnect(void);
