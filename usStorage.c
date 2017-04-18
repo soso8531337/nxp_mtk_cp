@@ -1578,7 +1578,11 @@ static int storage_init_netlink_sock(void)
 		return -1;
 	}
 	/*Triger phone*/
-	system("echo add > /sys/bus/usb/devices/usb1/1-1/1-1.2/uevent &");
+	if(access("/sys/bus/usb/devices/usb1/1-1/1-1.2/uevent", F_OK) == 0){
+		system("echo add > /sys/bus/usb/devices/usb1/1-1/1-1.2/uevent &");
+	}else if(access("/sys/bus/usb/devices/usb1/1-1/uevent", F_OK) == 0){
+		system("echo add > /sys/bus/usb/devices/usb1/1-1/uevent &");
+	}
 	return sockfd;
 }
 
@@ -1837,8 +1841,8 @@ static int storage_action_handle(int sockfd)
 	if(!strcasecmp(msg->subsystem, STOR_SUBSYS) &&
 			!strcasecmp(msg->devtype, STOR_DEVTYPE)){
 		storage_handle_diskplug(msg);
-	}else if(strstr(msg->devpath, PHONE_BUS_LOC) &&
-		!strcasecmp(msg->subsystem, PHONE_SUBSYS) &&
+//	}else if(strstr(msg->devpath, PHONE_BUS_LOC) &&
+	}else if(!strcasecmp(msg->subsystem, PHONE_SUBSYS) &&
 				!strcasecmp(msg->devtype, PHONE_DEVTYPE)){
 		SDEBUGOUT("Phone Detect [%s/%s]\r\n", 
 						msg->devname,  msg->devpath);

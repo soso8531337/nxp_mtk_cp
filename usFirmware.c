@@ -438,7 +438,7 @@ int usStorage_firmwareINFO(struct scsi_head *header)
 	if(spi_read(FLASH_SYS_DATA, (unsigned char*)&image, sizeof(image_info))){
 		printf("Read FLASH_SYS_DATA Error\r\n");
 		header->relag = 1;
-		return usProtocol_SendPackage(buffer, total);
+		return usProtocol_SendPackage((void*)header, total);
 	}
 	memset(&dinfo, 0, sizeof(vs_acessory_parameter));
 	memset(&firminfo, 0, sizeof(struct firmwareHeader));
@@ -451,20 +451,24 @@ int usStorage_firmwareINFO(struct scsi_head *header)
 	spi_read(FLASH_LICENCE_ADDR, (unsigned char*)&license, sizeof(struct allinfo));
 	if(crc32(0,(void*)&(license.info),sizeof(license.info)) 
 			 != license.crc){
-		FRIMDEBUG("ERROR: SN/License:\r\nSN:%s\r\nLicense:%s\r\n", 
+		printf("ERROR: SN/License:\r\nSN:%s\r\nLicense:%s\r\n", 
 								license.info.sn, license.info.license); 
-		header->relag = 1;
-		return usProtocol_SendPackage(buffer, total);
+		/*We not send error to phone, if we did will cause get firmware inforation error*/
+	//	header->relag = 1;
+	//	return usProtocol_SendPackage((void*)header, total);
+		memset(dinfo.sn, 0, sizeof(dinfo.sn));		
+		memset(dinfo.license, 0, sizeof(dinfo.license));
+	}else{
+		printf("SN/License:\r\nSN:%s\r\nLicense:%s\r\n", 
+							license.info.sn, license.info.license);		
+		strncpy(dinfo.sn, license.info.sn, sizeof(dinfo.sn)-1);
+		strncpy(dinfo.license, license.info.license, sizeof(dinfo.license)-1);
 	}
-	FRIMDEBUG("SN/License:\r\nSN:%s\r\nLicense:%s\r\n", 
-							license.info.sn, license.info.license);	
 	strcpy(dinfo.fw_version, firminfo.version);
 	strcpy(dinfo.hw_version, "1.0");
 	strcpy(dinfo.manufacture, firminfo.vendor);
 	strcpy(dinfo.model_name, firminfo.product);
-	strcpy(dinfo.sn, license.info.sn);
 	strcpy(dinfo.cardid, "1234567");
-	strncpy(dinfo.license, license.info.license, sizeof(dinfo.license)-1);
 	memcpy(buffer+total, &dinfo, flen);
 	total += flen;
 	
@@ -930,9 +934,15 @@ int usStorage_firmwareINFO(struct scsi_head *header)
 	strcpy(dinfo.cardid, "1234567");
 	/*Get SN/license*/
 	memset(&sinfo, 0, sizeof(struct allinfo));
-	showSnLicense(&sinfo);
-	strncpy(dinfo.sn, sinfo.info.sn, sizeof(dinfo.sn));
-	strncpy(dinfo.license, sinfo.info.license, sizeof(dinfo.license)-1);
+	if(showSnLicense(&sinfo) == 0){
+		/*OK*/
+		strncpy(dinfo.sn, sinfo.info.sn, sizeof(dinfo.sn)-1);
+		strncpy(dinfo.license, sinfo.info.license, sizeof(dinfo.license)-1);		
+	}else{
+		/*Bad*/
+		memset(dinfo.sn, 0, sizeof(dinfo.sn));		
+		memset(dinfo.license, 0, sizeof(dinfo.license));
+	}
 	memcpy(buffer+total, &dinfo, flen);
 	total += flen;
 
@@ -1107,8 +1117,10 @@ int usStorage_firmwareLicense(uint8_t *buffer, uint32_t recvSize)
 		scsi.relag = 1;
 		goto sndRes;
 	}
+	fsync(fd);
 	close(fd);
-
+	
+	sync();
 	FRIMDEBUG("Wirte License Successful\n");
 	
 sndRes:
