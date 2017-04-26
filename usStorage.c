@@ -1491,7 +1491,7 @@ void EVENT_USB_Host_DeviceEnumerationFailed(const uint8_t corenum,
 #define STOR_STR_CHANGE		"change"
 #define PHONE_SUBSYS				"usb"
 #define PHONE_DEVTYPE			"usb_device"
-
+#define HUB_CONFIG			"/tmp/us.hub"
 #define PHONE_BUS_LOC           "usb1/1-1/1-1.2"
 #define DISK_BUS_LOC            "usb1/1-1/1-1.1"
 
@@ -1740,6 +1740,7 @@ static int storage_handle_diskplug(struct udevd_uevent_msg *msg)
 				msg->action, msg->devname,	msg->devpath);
 		return 0;
 	}
+#if 0 /*Let main thread to notify app, if we do it, we may be block*/	
 	/*confirm try to send to peer wait 500ms*/
 	sendCount = usbLinux.usbSendCount;
 	while(countTime++ < COUNT_TIME){
@@ -1755,7 +1756,7 @@ static int storage_handle_diskplug(struct udevd_uevent_msg *msg)
 	diskPlug = usbLinux.usbDiskStatus;
 	usbLinux.usbDiskStatus = notifyNONE;
 	notify_plug(diskPlug);
-	
+#endif	
 	SDEBUGOUT("Plug Thread Notify Disk %s [%s/%s] Event\r\n",
 			msg->action, msg->devname, msg->devpath);
 
@@ -1770,17 +1771,12 @@ static int storage_handle_phoneplug(struct udevd_uevent_msg *msg)
 	
 	if(!strcasecmp(msg->action, STOR_STR_ADD)){
 		/*Add phone*/
-		if(usbLinux.usbPhoneStatus == 1){
-			SDEBUGOUT("Phone Have Been PlugIN %s [%s/%s] Event\r\n",
-					msg->action, msg->devname, msg->devpath);
-			usbLinux.usbPhoneStatus = 0;
-		}		
-		usProtocol_DeviceDisConnect();
+		/*We just set phone plug in, notify main thread to detect phone*/
 		usbLinux.usbPhoneStatus = 1;
 		SDEBUGOUT("Phone PlugIN %s [%s/%s] Event\r\n",
 				msg->action, msg->devname, msg->devpath);		
 	}else if(!strcasecmp(msg->action, STOR_STR_REM)){
-		usbLinux.usbPhoneStatus = 0;
+		//usbLinux.usbPhoneStatus = 0; /*We not set the plug status, let main thread to detect*/
 		SDEBUGOUT("Phone PlugOUT %s [%s/%s] Event\r\n",
 				msg->action, msg->devname, msg->devpath);		
 	}else{
@@ -1841,12 +1837,22 @@ static int storage_action_handle(int sockfd)
 	if(!strcasecmp(msg->subsystem, STOR_SUBSYS) &&
 			!strcasecmp(msg->devtype, STOR_DEVTYPE)){
 		storage_handle_diskplug(msg);
-//	}else if(strstr(msg->devpath, PHONE_BUS_LOC) &&
 	}else if(!strcasecmp(msg->subsystem, PHONE_SUBSYS) &&
 				!strcasecmp(msg->devtype, PHONE_DEVTYPE)){
-		SDEBUGOUT("Phone Detect [%s/%s]\r\n", 
+		/*we use HUB_CONFIG to known if it has hub, base on /etc/firmware*/
+		if(access(HUB_CONFIG, F_OK) == 0 &&
+				strstr(msg->devpath, PHONE_BUS_LOC)){
+			SDEBUGOUT("Phone Detect[Have HUB] [%s/%s]\r\n", 
 						msg->devname,  msg->devpath);
-		storage_handle_phoneplug(msg);
+			storage_handle_phoneplug(msg);
+		}else if(access(HUB_CONFIG, F_OK)){
+			SDEBUGOUT("Phone Detect[No HUB] [%s/%s]\r\n", 
+						msg->devname,  msg->devpath);
+			storage_handle_phoneplug(msg);
+		}else{
+			SDEBUGOUT("No Complete Match DevicePlug %s [%s/%s] Event\r\n",
+					msg->action, msg->devname,	msg->devpath);
+		}
 	}else{
 		SDEBUGOUT("Unhandle DevicePlug %s [%s/%s] Event\r\n",
 				msg->action, msg->devname,	msg->devpath);
