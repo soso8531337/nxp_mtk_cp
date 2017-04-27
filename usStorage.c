@@ -1776,7 +1776,7 @@ static int storage_handle_phoneplug(struct udevd_uevent_msg *msg)
 		SDEBUGOUT("Phone PlugIN %s [%s/%s] Event\r\n",
 				msg->action, msg->devname, msg->devpath);		
 	}else if(!strcasecmp(msg->action, STOR_STR_REM)){
-		//usbLinux.usbPhoneStatus = 0; /*We not set the plug status, let main thread to detect*/
+		usbLinux.usbPhoneStatus = 0;/*We just set phone plug out status*/
 		SDEBUGOUT("Phone PlugOUT %s [%s/%s] Event\r\n",
 				msg->action, msg->devname, msg->devpath);		
 	}else{
@@ -1997,7 +1997,8 @@ int main(int argc, char **argv)
 			usleep(500000);
 			continue;
 		}else if(!phoneStatus){			
-			SDEBUGOUT("Wait Phone Plug IN.\r\n");
+			SDEBUGOUT("Wait Phone Plug IN.\r\n");			
+			usProtocol_DeviceDisConnect();
 			usleep(500000);
 			continue;			
 		}
@@ -2010,7 +2011,6 @@ int main(int argc, char **argv)
 		
 		if(usStorage_Handle() == PROTOCOL_DISCONNECT){			
 			SDEBUGOUT("Destory USB Resource.\r\n");
-			usbLinux.usbPhoneStatus = 0;
 			usProtocol_DeviceDisConnect();
 			continue;
 		}
