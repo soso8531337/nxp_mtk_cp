@@ -1064,9 +1064,11 @@ uint8_t usProtocol_SwitchAOAMode(usb_device *usbdev)
 	usUsb_Print(ConfigDescriptorData, ConfigDescriptorSize); 
 	/*Must Set to var, the funciton will change the point*/
 	PtrConfigDescriptorData = ConfigDescriptorData;
-	if (USB_GetNextDescriptorComp(&ConfigDescriptorSize, (void **)&PtrConfigDescriptorData,
+	if(((USB_StdDescriptor_Configuration_Header_t*)ConfigDescriptorData)->bNumInterfaces == 1){
+		printf("Attached Device Only Have One Interface, Try it.\r\n");
+	}else if (USB_GetNextDescriptorComp(&ConfigDescriptorSize, (void **)&PtrConfigDescriptorData,
 				NXP_FILTERFUNC_AOA_CLASS) != DESCRIPTOR_SEARCH_COMP_Found){		
-		PRODEBUG("Attached Device Not a Valid AOA Device[NO 0xff Interface].\r\n");
+		printf("Attached Device Not a Valid AOA Device[NO 0xff Interface].\r\n");
 		return PROTOCOL_REGEN;
 	}
 	/*Set AOA*/
