@@ -31,6 +31,10 @@
 #include "USB.h"
 #include <ctype.h>
 #include <stdio.h>
+#include "drv_l2_sdc.h"
+#include "drv_l1_sdc.h"
+#include "drv_l1_ext_int.h"
+#include "cp15.h"
 
 #endif
 
@@ -994,6 +998,9 @@ uint8_t LINUX_DiskWriteSectors(usb_device *usbdev,
 /*Special USB Command*/
 //#define GP_USB_TIMEOUT		2000
 #define GP_USB_TIMEOUT		0
+#ifndef GP_SD_IDX
+#define GP_SD_IDX		1
+#endif
 static uint8_t GP_SendControlRequest(const uint8_t corenum, 
 			uint8_t bmRequestType, uint8_t bRequest, 
 			uint16_t wValue, uint16_t wIndex, uint16_t wLength, void * const data)
@@ -1276,8 +1283,13 @@ uint8_t GP_DiskReadSectors(usb_device *usbdev,
 			numSecPer = numSec-already;
 		}
 		if(usbdev->usb_type == USB_CARD){
-			USBDEBUG("Error Dose Not Support SDCard\r\n"); 		
-			return USB_REOK;
+			USBDEBUG("GP SDCard Read\r\n");			
+			D_cache_invalid_range((unsigned int)buff, numSec*512);
+			ret = drvl2_sd_read(GP_SD_IDX, secStart, (INT32U *)buff, numSec);
+			if(ret){
+				printf("GP Read SD Card Error. ret=%d\r\n", ret);
+				return USB_REGEN;
+			}
 		}else{	
 			ret = MassStorage_ReadDeviceBlocks((USB_ClassInfo_MS_Host_t*)usbdev->os_priv, 0, 
 								curSec, numSecPer, BlockSize, (void *)(curBuf+already*BlockSize));
@@ -1313,8 +1325,12 @@ uint8_t GP_DiskWriteSectors(usb_device *usbdev,
 			numSecPer = numSec-already;
 		}
 		if(usbdev->usb_type == USB_CARD){
-			USBDEBUG("Error Dose Not Support SDCard\r\n"); 		
-			return USB_REOK;
+			USBDEBUG("GP SDCard Write\r\n");
+			ret = drvl2_sd_write(GP_SD_IDX, secStart, (INT32U *)buff, numSec);
+			if(ret){
+				printf("GP Write SD Card Error. ret=%d\r\n", ret);
+				return USB_REGEN;
+			}
 		}else{
 			ret = MassStorage_WriteDeviceBlocks((USB_ClassInfo_MS_Host_t*)usbdev->os_priv, 0, 
 								curSec, numSecPer, BlockSize, (void *)(curBuf+already*BlockSize));
@@ -1344,8 +1360,14 @@ uint8_t GP_DiskReadSectors(usb_device *usbdev,
 		return USB_REPARA;
 	}
 	if(usbdev->usb_type == USB_CARD){
-
-		USBDEBUG("Error Dose Not Support SDCard\r\n");		
+		USBDEBUG("GP SDCard Read\r\n");		
+		D_cache_invalid_range((unsigned int)buff, numSec*512);
+		ret = drvl2_sd_read(GP_SD_IDX, secStart, (INT32U *)buff, numSec);
+		if(ret){
+			printf("GP Read SD Card Error. ret=%d\r\n", ret);
+			return USB_REGEN;
+		}
+		USBDEBUG("SD Read %dSectors [StarSector:%d]\r\n", numSec, secStart); 	
 		return USB_REOK;
 	}else{
 		/*USB Storage Read*/
@@ -1372,7 +1394,13 @@ uint8_t GP_DiskWriteSectors(usb_device *usbdev,
 		return USB_REPARA;
 	}
 	if(usbdev->usb_type == USB_CARD){
-		USBDEBUG("Error Dose Not Support SDCard\r\n");		
+		USBDEBUG("GP SDCard Write\r\n");
+		ret = drvl2_sd_write(GP_SD_IDX, secStart, (INT32U *)buff, numSec);
+		if(ret){
+			printf("GP Write SD Card Error. ret=%d\r\n", ret);
+			return USB_REGEN;
+		}
+		USBDEBUG("SD Write %dSectors [StarSector:%d]\r\n", numSec, secStart);		
 		return USB_REOK;
 	}else{
 		/*USB Storage Write*/

@@ -183,8 +183,30 @@ static uint8_t usDisk_DeviceDetectHDD(uint8_t type, void *os_priv)
 static uint8_t usDisk_DeviceDetectCard(uint8_t type, void *os_priv)
 {
 #if defined(GP_CHIP)
-	DSKDEBUG("Not Support SDCard\r\n");
-	return DISK_REGEN;
+	DSKDEBUG("GP Support SDCard\r\n");
+	usDisk_info diskInfo, *pDiskInfo = NULL;
+
+	memset(&diskInfo, 0, sizeof(usDisk_info));
+    /* Read Card information */
+	diskInfo.Blocks = *((uint32_t*)os_priv);
+	diskInfo.BlockSize = 512;
+	diskInfo.disk_cap = (int64_t)diskInfo.Blocks *diskInfo.BlockSize;
+
+	pDiskInfo= usDisk_FindLocation(type);	
+	if(pDiskInfo == NULL){
+		DSKDEBUG("No Found Location\r\n");
+		return DISK_REGEN;
+	}
+	pDiskInfo->Blocks = diskInfo.Blocks;
+	pDiskInfo->BlockSize = diskInfo.BlockSize;
+	pDiskInfo->disk_cap = diskInfo.disk_cap;
+	usb_device *usbdev = &(pDiskInfo->diskdev);
+	usbdev->usb_type = type;
+	
+	printf("SD Card Enumerated. [Num:%d Blocks:%d BlockSzie:%u Cap:%lld]\r\n",
+			pDiskInfo->disknum, pDiskInfo->Blocks, pDiskInfo->BlockSize, pDiskInfo->disk_cap);
+	
+	return DISK_REOK;
 #elif defined(NXP_CHIP_18XX)
 	usDisk_info *pDiskInfo= usDisk_FindLocation(type);
 	mci_card_struct *sdinfo = (mci_card_struct *)os_priv;

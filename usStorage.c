@@ -50,6 +50,9 @@
 #include <ctype.h>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "drv_l2_sdc.h"
+#include "drv_l1_sdc.h"
+#include "drv_l1_ext_int.h"
 #elif defined(LINUX)
 #include <stdio.h>
 #include <errno.h>
@@ -1250,6 +1253,10 @@ void EVENT_USB_Host_DeviceEnumerationFailed(const uint8_t corenum,
 #define GP_USB_DISK	1
 /*Plug flag*/
 volatile uint8_t notifyPhone = 0;
+QueueHandle_t   sd_task_que;
+static INT8U card_detect_status;
+static INT32S gp_sd_idx = GP_SD_IDX;
+
 /** LPCUSBlib Mass Storage Class driver interface configuration and state information. This structure is
  *  passed to all Mass Storage Class driver functions, so that multiple instances of the same class
  *  within a device can be differentiated from one another.
@@ -1280,6 +1287,55 @@ static USB_ClassInfo_MS_Host_t UStorage_Interface[]	= {
 	},
 	
 };
+
+typedef enum {
+    SD_INIT = 0x85900000,
+    SD_TEST,
+    SD_PLUG_OUT
+} SD_TASK_ENUM;
+
+void gp_sd_card_detect_isr(void)
+{
+	INT32U msg_id;
+	//card insert detect
+	if(card_detect_status == 0)
+	{
+		msg_id = SD_INIT;
+		card_detect_status = 1;
+		//send notify queue to initial SD       
+		xQueueSendFromISR(sd_task_que, (void *)&msg_id, 0);
+
+	}else if(card_detect_status == 2){
+		msg_id = SD_PLUG_OUT;
+		card_detect_status = 3;
+
+		xQueueSendFromISR(sd_task_que, (void *)&msg_id, 0);
+	}
+}
+
+static void SDMMC_Init(void)
+{
+	drvl1_sdc_pwr_sel(1);
+	drvl1_sdc_pwr_enable(1);//PMOS 1:off
+	vTaskDelay(200);//turn off power awhile
+	drvl1_sdc_pwr_enable(0);
+	drvl1_sdc_pwr_sel(1);
+	drvl1_sdc_levelshifter_enable(1);
+
+	//queue create
+	sd_task_que = xQueueCreate(5,sizeof(INT32U));
+	//external interrupt init
+	card_detect_status = 0;
+	drv_l1_ext_int_init();
+	drv_l1_ext_edge_set(EXTA,FALLING);
+	drv_l1_ext_user_isr_set(EXTA, gp_sd_card_detect_isr);
+	drv_l1_ext_enable_set(EXTA,ENABLE);
+	//boot and inserted card, send queue to initial
+	if((R_IOA_I_DATA&0x0400) == 0){
+		INT32U msg_send = SD_INIT;
+		xQueueSend(sd_task_que, &msg_send, portMAX_DELAY);
+	}
+}
 
 static uint8_t GP_setDiskNotifyTag(void)
 {
@@ -1328,8 +1384,78 @@ static uint8_t	GP_notifyDiskChange(void)
  {
 	USB_Init(UStorage_Interface[0].Config.PortNumber, USB_MODE_Host);	
 	USB_Init(UStorage_Interface[1].Config.PortNumber, USB_MODE_Host);
+	/*Init SD*/
+	SDMMC_Init();
  }
+ 
+static void wait_sdcard(INT32S SD_IDX)
+{
+	INT32U msg, result;
+	INT32S ret;
+	INT32U total_sec = 0;
+	
+	while(1){
+		result = xQueueReceive(sd_task_que, &msg, portMAX_DELAY);
+		if(result != pdPASS){
+			vTaskDelay(30);
+			continue;
+		}
+		switch(msg){
+			case SD_INIT:
+				//debouce awhile
+				vTaskDelay(30);
+				if((R_IOA_I_DATA&0x0400) != 0){
+					//unstable return  
+					card_detect_status = 0;	
+					break;
+				}
+				//sdc_reset_all_int_count();
+				drvl1_sdc_pwr_enable(0);
+				drvl1_sdc_pwr_sel(1);
+				drvl1_sdc_levelshifter_enable(1);
 
+				vTaskDelay(300);//wait card stable
+				drvl2_sd_set_bit_mode(SD_IDX, 4);
+				ret = drvl2_sd_init(SD_IDX); // SD_IDX
+				if(ret != 0){
+					printf("init not done\r\n");
+					card_detect_status = 0;	
+					break;
+				}
+				printf("SD[%d]:drvl2_sd_init exit\r\n", SD_IDX);
+				total_sec = drvl2_sd_sector_number_get(SD_IDX);
+				printf("SD[%d]:SD total sector num = %d\r\n", SD_IDX, total_sec);
+				card_detect_status = 2;  
+				drv_l1_ext_edge_set(EXTA,RISING);
+				if(usDisk_DeviceDetect(USB_CARD, (void*)&total_sec)){
+					printf("SD/MMC Device Detect Failed\r\n");
+					break;
+				}
+				GP_setDiskNotifyTag();
+				break;
+			case SD_PLUG_OUT:
+				//debouce awhile
+				drvl2_sd_card_remove(1);
+				vTaskDelay(30);
+				if((R_IOA_I_DATA&0x0400) == 0){
+					//unstable return	
+					card_detect_status = 2;  
+					break;
+				}
+				drvl1_sdc_pwr_enable(0);
+				drvl1_sdc_pwr_sel(1);
+				drvl1_sdc_levelshifter_enable(1);
+				card_detect_status = 0;  
+				drv_l1_ext_edge_set(EXTA,FALLING);
+				usDisk_DeviceDisConnect(USB_CARD, NULL);		
+				GP_setDiskNotifyTag();
+				printf("SD plug out\r\n");
+				break;
+			default:
+				break;
+		}
+	}
+}
  /*
 **return value:
 *0: no usb disk
@@ -1356,6 +1482,12 @@ void vs_main_disk(void *pvParameters)
 	}
 }
 
+void vs_sd_disk(void *pvParameters)
+{
+	INT32S SD_IDX = (*((INT32S *)pvParameters));
+	wait_sdcard(SD_IDX);
+}
+
 void vs_main(void *pvParameters)
 {
 	SetupHardware();
@@ -1364,6 +1496,8 @@ void vs_main(void *pvParameters)
 	usProtocol_init();
 	xTaskCreate(vs_main_disk, "vTaskDisk", 1024,
 			NULL, (tskIDLE_PRIORITY + 2UL), (TaskHandle_t *) NULL);
+	xTaskCreate(vs_sd_disk, "vTaskSDDisk", 1024,
+			(void*)(&gp_sd_idx), (tskIDLE_PRIORITY + 2UL), (TaskHandle_t *) NULL);
 
 	while(1){
 		if(USB_HostState[GP_USB_PHONE] < HOST_STATE_Powered){

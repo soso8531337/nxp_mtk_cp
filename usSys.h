@@ -13,6 +13,10 @@ extern "C" {
 #define DEBUG_ENABLE1    1
 #endif
 
+#if defined(GP_CHIP)
+#define GP_SD_IDX		1
+#endif
+
 #if defined(LINUX)
 #define ENOUGH_MEMORY	1
 #endif
