@@ -992,7 +992,8 @@ uint8_t LINUX_DiskWriteSectors(usb_device *usbdev,
 }
 #elif defined(GP_CHIP)
 /*Special USB Command*/
-#define GP_USB_TIMEOUT		2000
+//#define GP_USB_TIMEOUT		2000
+#define GP_USB_TIMEOUT		0
 static uint8_t GP_SendControlRequest(const uint8_t corenum, 
 			uint8_t bmRequestType, uint8_t bRequest, 
 			uint16_t wValue, uint16_t wIndex, uint16_t wLength, void * const data)

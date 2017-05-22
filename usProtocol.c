@@ -1617,7 +1617,9 @@ uint8_t usProtocol_DeviceDisConnect(void)
 {
 	uint8_t typePhone = uSinfo.usType;
 		
-	memset(&uSinfo, 0, sizeof(uSinfo));
+	//memset(&uSinfo, 0, sizeof(uSinfo));
+	uSinfo.State = CONN_INIT;
+	printf("Just Set the Connect State, if not, the core may be crash.[%d]\r\n", uSinfo.State);
 	return typePhone;
 }
 
@@ -1636,6 +1638,8 @@ uint8_t usProtocol_init(void)
 				"\tVersion:%s\r\n\tURL:%s\r\n\tSerical:%s\r\n\tiosPort:%d\r\n", acc_default.manufacturer,
 			acc_default.model, acc_default.description, acc_default.version, acc_default.url,
 			acc_default.serial, ios_port);
+
+	memset(&uSinfo, 0, sizeof(uSinfo));
 
 	return PROTOCOL_REOK;
 }
