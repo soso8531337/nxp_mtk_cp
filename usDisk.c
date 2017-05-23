@@ -307,6 +307,7 @@ typedef struct  _diskLinux{
 	int diskFD;
 	char dev[256];
 }diskLinux;
+extern int special_set_sdcard(char *devpath);
 
 static int disk_chk_proc(char *dev)
 {
@@ -382,7 +383,7 @@ void usDisk_DeviceInit(void *os_priv)
 	struct dirent *dent;
 	DIR *dir;
 	struct stat statbuf;
-	char sys_dir[1024] = {0};
+	char sys_dir[1024] = {0}, linkdir[2048] = {0}, linkcnt[2048] = {0};
 
 	/*Get Block Device*/
 	if(stat(SYS_CLA_BLK, &statbuf) == 0){
@@ -436,7 +437,10 @@ void usDisk_DeviceInit(void *os_priv)
 			close(fd);
 		}
 		/*preread*/
-		if(strstr(dent->d_name, "mmcblk")){
+		snprintf(linkdir, sizeof(linkdir)-1, "%s/%s", sys_dir, dent->d_name);
+		readlink(linkdir, linkcnt, sizeof(linkcnt)-1);
+		if(strstr(dent->d_name, "mmcblk") ||
+				special_set_sdcard(linkcnt) == 1){
 			usDisk_DeviceDetect(USB_CARD, (void*)devbuf);
 		}else{
 			usDisk_DeviceDetect(USB_DISK, (void*)devbuf);

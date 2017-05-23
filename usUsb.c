@@ -918,7 +918,7 @@ uint8_t LINUX_DiskReadSectors(usb_device *usbdev,
 	off_t offset;
 	int already = 0, res, total = 0;
 	
-	fd = open(devname, O_RDWR);
+	fd = open(devname, O_RDONLY);
 	if(fd < 0){
 		USBDEBUG("Open %s Error:%s\n", devname, strerror(errno));
 		return USB_REGEN;

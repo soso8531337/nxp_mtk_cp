@@ -1689,6 +1689,43 @@ void notify_plug(uint8_t action)
 	usStorage_sendHEAD(&header);
 }
 
+int special_set_sdcard(char *devpath)
+{
+	FILE *fp;
+	char line[256] = {0}, key[128], value[128];
+	
+#define SYS_FIRMCONF1		"/etc/firmware"
+	
+	if(!devpath){
+		return -1;
+	}
+	/*Get Firmware Info*/
+	fp = fopen(SYS_FIRMCONF1, "r");
+	if(fp == NULL){
+		SDEBUGOUT("Open %s Failed:%s\r\n", 
+						SYS_FIRMCONF1, strerror(errno));
+		return -1;
+	}
+	while (fgets(line, sizeof(line), fp)) {
+		memset(key, 0, sizeof(key));
+		memset(value, 0, sizeof(value));		
+		if (sscanf(line, "%[^=]=%[^\n ]",
+					key, value) != 2)
+			continue;
+		if(!strcasecmp(key, "SDLOC")){
+			fclose(fp);//close fp first
+			if(strstr(devpath, value)){
+				SDEBUGOUT("Found Special SD Card Location:%s\r\n", value);
+				return 1;
+			}
+			return 0;
+		}
+	}
+	fclose(fp);
+
+	return 0;
+}
+
 static int storage_init_netlink_sock(void)
 {
 	struct sockaddr_nl snl;
@@ -1816,7 +1853,8 @@ static int storage_handle_diskplug(struct udevd_uevent_msg *msg)
 		SDEBUGOUT("ADD Device %d [%s/%s] To Storage List\r\n", 
 				msg->id, msg->devname,  msg->devpath);
 		notify_set_action(notifyADD);
-		if(!strncmp(msg->devname, "mmcblk", 6)){
+		if(!strncmp(msg->devname, "mmcblk", 6) ||
+					special_set_sdcard(msg->devpath) == 1){
 			usDisk_DeviceDetect(USB_CARD, (void*)devbuf);
 		}else{
 			usDisk_DeviceDetect(USB_DISK, (void*)devbuf);
@@ -1827,7 +1865,8 @@ static int storage_handle_diskplug(struct udevd_uevent_msg *msg)
 		char devbuf[128] = {0};
 		sprintf(devbuf, "/dev/%s", msg->devname);
 
-		if(!strncmp(msg->devname, "mmcblk", 6)){
+		if(!strncmp(msg->devname, "mmcblk", 6) ||
+					special_set_sdcard(msg->devpath) == 1){
 			rc = usDisk_DeviceDisConnect(USB_CARD, devbuf);
 		}else{
 			rc = usDisk_DeviceDisConnect(USB_DISK, (void*)devbuf);
@@ -1850,7 +1889,8 @@ static int storage_handle_diskplug(struct udevd_uevent_msg *msg)
 		if((fd = open(devbuf, O_RDONLY)) < 0){
 			/*Remove ID*/
 			SDEBUGOUT("We Think it may be Remove action[%s]\r\n", msg->devname);
-			if(!strncmp(msg->devname, "mmcblk", 6)){
+			if(!strncmp(msg->devname, "mmcblk", 6) ||
+						special_set_sdcard(msg->devpath) == 1){
 				rc = usDisk_DeviceDisConnect(USB_CARD, devbuf);
 			}else{
 				rc = usDisk_DeviceDisConnect(USB_DISK, (void*)devbuf);
@@ -1863,7 +1903,8 @@ static int storage_handle_diskplug(struct udevd_uevent_msg *msg)
 			close(fd);			
 			SDEBUGOUT("We Think it may be Add action[%s]\r\n", msg->devname);
 			notify_set_action(notifyADD);			
-			if(!strncmp(msg->devname, "mmcblk", 6)){
+			if(!strncmp(msg->devname, "mmcblk", 6) ||
+						special_set_sdcard(msg->devpath) == 1){
 				usDisk_DeviceDetect(USB_CARD, (void*)devbuf);
 			}else{
 				usDisk_DeviceDetect(USB_DISK, (void*)devbuf);
