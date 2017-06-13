@@ -504,9 +504,11 @@ static int usStorage_diskMULREAD(struct scsi_head *header)
 
 		avsize = min(USDISK_SECTOR*OP_DIV(size), header->len-rsize); /*We leave a sector for safe*/		
 		secCount = OP_DIV(avsize);
-		if(usDisk_DiskReadSectors(buffer, header->wlun, addr, secCount)){
-			SDEBUGOUT("Read Sector Error[SndTotal:%d addr:%d  SectorCount:%d]\r\n",
-					rsize, addr, secCount);
+		if(usDisk_DiskReadSectors(buffer, header->wlun, addr, secCount)){			
+			header->relag = 1;
+			SDEBUGOUT("Read Sector Error[SndTotal:%d addr:%d  SectorCount:%d relag=%d] Send To APP the Result[SHIT]\r\n",
+					rsize, addr, secCount, header->relag);
+			usProtocol_SendPackage(header, PRO_HDR);
 			return 1;
 		}
 		/*Send To Phone*/
@@ -715,6 +717,7 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 		SDEBUGOUT("usStorage_diskWRITE Length is 0\r\n");
 		return 0;
 	}
+	header->relag = 0;
 	addr = header->addr;
 	/*Write the first payload*/
 	paySize= recvSize-PRO_HDR;
@@ -730,8 +733,13 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 						addr, sdivSize);
 		/*Write to Phone*/
 		header->relag = 1;
+#ifdef IMMEDIATE_SNDHDR  	
 		usStorage_sendHEAD(header);	
 		return 1;
+#else
+		SDEBUGOUT("Write DISK Error, We Need To Receive complete the package...[FUCK]\r\n");
+#endif
+		
 	}
 	addr += sdivSize;
 	curSize = paySize-secSize;
@@ -768,13 +776,17 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 			memcpy(sector+secSize, ptr, USDISK_SECTOR-secSize);
 			ptr += (USDISK_SECTOR-secSize);
 			/*Write to disk*/
-			if(usDisk_DiskWriteSectors(sector, header->wlun, addr, 1)){
+			if(header->relag == 0 && usDisk_DiskWriteSectors(sector, header->wlun, addr, 1)){
 				SDEBUGOUT("REQUEST WRITE Last Sector Error[addr:%d SectorCount:%d]\r\n",
 							addr, secCount);
-				/*Write to Phone*/
+				/*Write to Phone*/				
 				header->relag = 1;
-				usStorage_sendHEAD(header);				
+			#ifdef IMMEDIATE_SNDHDR  	
+				usStorage_sendHEAD(header); 
 				return 1;
+			#else
+				SDEBUGOUT("Write DISK Error Again, We Need To Continue Receive the package...[FUCK2]\r\n");
+			#endif		
 			}
 			/*add var*/
 			addr++;
@@ -792,13 +804,18 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 			memcpy(sector, ptr+secCount*USDISK_SECTOR, secSize);
 		}
 		/*Write to disk*/
-		if(secCount && usDisk_DiskWriteSectors(ptr, header->wlun, addr, secCount)){
+		if(header->relag == 0 &&
+				secCount && usDisk_DiskWriteSectors(ptr, header->wlun, addr, secCount)){
 			SDEBUGOUT("REQUEST WRITE Error[addr:%d	SectorCount:%d]\r\n",
 							addr, sdivSize);
 			/*Write to Phone*/
 			header->relag = 1;
-			usStorage_sendHEAD(header);				
+		#ifdef IMMEDIATE_SNDHDR	
+			usStorage_sendHEAD(header); 
 			return 1;
+		#else
+			SDEBUGOUT("Write DISK Error Again, We Need To Continue Receive the package...[FUCK3]\r\n");
+		#endif
 		}
 		/*Add var*/
 		addr += secCount;
@@ -811,8 +828,8 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 		return 1;
 	}
 
-	SDEBUGOUT("REQUEST WRITE FINISH:\r\nwtag=%d\r\nctrid=%d\r\naddr=%d\r\nlen=%d\r\nwlun=%d\r\n", 
-			header->wtag, header->ctrid, header->addr, header->len, header->wlun);
+	SDEBUGOUT("REQUEST WRITE FINISH:\r\nresult=%d\r\nwtag=%d\r\nctrid=%d\r\naddr=%d\r\nlen=%d\r\nwlun=%d\r\n", 
+					header->relag,header->wtag, header->ctrid, header->addr, header->len, header->wlun);
 	return 0;
 }
 #endif
@@ -875,7 +892,7 @@ static int usStorage_diskLUN(struct scsi_head *header)
 	total += 1;
 	
 	if((rc = usProtocol_SendPackage(buffer, total)) != 0){
-		SDEBUGOUT("usProtocol_SendPackage Failed\r\n");
+		SDEBUGOUT("usProtocol_SendPackage Failed[ret=%d]\r\n", rc);
 		return rc;
 	}
 	SDEBUGOUT("usStorage_diskLUN Successful[DiskNumber %d]\r\n", num);
@@ -1321,7 +1338,7 @@ static void SDMMC_Init(void)
 	drvl1_sdc_pwr_enable(0);
 	drvl1_sdc_pwr_sel(1);
 	drvl1_sdc_levelshifter_enable(1);
-
+	vTaskDelay(200);//turn on power awhile
 	//queue create
 	sd_task_que = xQueueCreate(5,sizeof(INT32U));
 	//external interrupt init
@@ -1403,25 +1420,30 @@ static void wait_sdcard(INT32S SD_IDX)
 		switch(msg){
 			case SD_INIT:
 				//debouce awhile
-				vTaskDelay(30);
+				vTaskDelay(40);
 				if((R_IOA_I_DATA&0x0400) != 0){
 					//unstable return  
 					card_detect_status = 0;	
 					break;
 				}
-				//sdc_reset_all_int_count();
-				drvl1_sdc_pwr_enable(0);
-				drvl1_sdc_pwr_sel(1);
-				drvl1_sdc_levelshifter_enable(1);
-
-				vTaskDelay(300);//wait card stable
 				drvl2_sd_set_bit_mode(SD_IDX, 4);
 				ret = drvl2_sd_init(SD_IDX); // SD_IDX
 				if(ret != 0){
-					printf("init not done\r\n");
-					card_detect_status = 0;	
+					if((R_IOA_I_DATA&0x0400) != 0){
+						printf("card remove during initial\r\n");
+					}else{
+						printf("init not done\r\n");
+					}
+					//card_detect_status = 0;  
+					drvl2_sd_card_remove(1);
+					drvl1_sdc_pwr_enable(0);
+					drvl1_sdc_pwr_sel(1);
+					drvl1_sdc_levelshifter_enable(1);
+					card_detect_status = 0;  
+					drv_l1_ext_edge_set(EXTA,FALLING);
 					break;
 				}
+				
 				printf("SD[%d]:drvl2_sd_init exit\r\n", SD_IDX);
 				total_sec = drvl2_sd_sector_number_get(SD_IDX);
 				printf("SD[%d]:SD total sector num = %d\r\n", SD_IDX, total_sec);
@@ -1434,14 +1456,14 @@ static void wait_sdcard(INT32S SD_IDX)
 				GP_setDiskNotifyTag();
 				break;
 			case SD_PLUG_OUT:
+				 vTaskDelay(40);
+				 if((R_IOA_I_DATA&0x0400) == 0){
+					 //unstable return	 
+					 card_detect_status = 2;  
+					 break;
+				 }			
 				//debouce awhile
 				drvl2_sd_card_remove(1);
-				vTaskDelay(30);
-				if((R_IOA_I_DATA&0x0400) == 0){
-					//unstable return	
-					card_detect_status = 2;  
-					break;
-				}
 				drvl1_sdc_pwr_enable(0);
 				drvl1_sdc_pwr_sel(1);
 				drvl1_sdc_levelshifter_enable(1);

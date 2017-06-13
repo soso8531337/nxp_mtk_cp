@@ -1069,7 +1069,8 @@ static uint8_t GP_BlukPacketSend(usb_device *usbdev, uint8_t *buffer,
 	MSInterfaceInfo = (USB_ClassInfo_MS_Host_t *)usbdev->os_priv;
 	Pipe_SelectPipe(MSInterfaceInfo->Config.PortNumber, 
 			MSInterfaceInfo->Config.DataOUTPipeNumber);
-
+	
+	USBDEBUG("Prepare USB Send ===================>[%dBytes]\r\n", length);
 	ErrorCode = Pipe_Streaming(MSInterfaceInfo->Config.PortNumber, buffer, 
 					length, actual_length, GP_USB_TIMEOUT);
 
