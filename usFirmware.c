@@ -723,6 +723,8 @@ int usStorage_firmwareLicense(uint8_t *buffer, uint32_t recvSize)
 #define MD5_FLAG			"MD5="
 #define SYS_FIRM_SKIP		(64*1024) //skip 64KB
 #define SYS_FIRM_UPSCRIP		"/sbin/sysupgrade"
+#define SYS_UPGRADE_LED_BEGIN			"pioctl fan 2"
+#define SYS_UPGRADE_LED_END			"pioctl fan 1"
 
 static int compute_md5(char *filename, off_t offset, char *md5buf)
 {
@@ -971,7 +973,8 @@ int usStorage_firmwareUP(uint8_t *buffer, uint32_t recvSize)
 	/*We must save the header in var*/
 	memcpy(&scsi, buffer, PRO_HDR);
 	if(scsi.ctrid == SCSI_UPDATE_START){
-		FRIMDEBUG("Prepare To update Firmware\r\n");		
+		FRIMDEBUG("Prepare To update Firmware\r\n");
+		system(SYS_UPGRADE_LED_BEGIN);
 		close(fd);
 		fd = open(USTORAGE_UPPATH, 
 				O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
