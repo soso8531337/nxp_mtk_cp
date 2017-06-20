@@ -96,6 +96,11 @@
 #ifdef ENOUGH_MEMORY
 #if defined(NXP_CHIP_18XX)
 uint8_t usbWriteBuffer[USB_WRTE] __attribute__((section ("USB_RAM1"), zero_init));
+#elif defined(GP_CHIP)
+#pragma default_variable_attributes = @ "NON_CACHE"
+uint8_t usbWriteBuffer[USB_WRTE];
+#pragma default_variable_attributes =
+
 #else
 uint8_t usbWriteBuffer[USB_WRTE];
 #endif

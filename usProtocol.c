@@ -103,10 +103,15 @@ struct accessory_t {
 #define IOS_WIN_SIZE				131072 /*Must Not change this value*/
 #if defined(NXP_CHIP_18XX)
 #define USB_MTU				(32*1024)
+uint8_t usProTmpBuffer[MPACKET_SIZE];
 #elif defined(GP_CHIP)
 #define USB_MTU				(32*1024)
+#pragma default_variable_attributes = @ "NON_CACHE"
+uint8_t usProTmpBuffer[MPACKET_SIZE];
+#pragma default_variable_attributes =
 #else
 #define USB_MTU				(258*1024)
+uint8_t usProTmpBuffer[MPACKET_SIZE];
 #endif
 //#define USB_MTU				(32*1024) //more than 32K may be error
 // max transmission packet size
@@ -238,11 +243,18 @@ static int32_t ios_port = IOS_DEFAULT_PORT;
 /*This is the global buffer for send usb data or receive usb data
 * It is very important
 */
+
 #if defined(NXP_CHIP_18XX)
 uint8_t usbBuffer[USB_MTU] __attribute__((section ("USB_RAM1"), zero_init));    // Memory dedicated for the USB Host Controlle;
+#elif defined(GP_CHIP)
+#pragma default_variable_attributes = @ "NON_CACHE"
+uint8_t usbBuffer[USB_MTU];    // Memory dedicated for the USB Host Controlle;
+#pragma default_variable_attributes =
 #else
 uint8_t usbBuffer[USB_MTU];
 #endif
+
+
 
 /*****************************************************************************
  * Private functions
@@ -264,7 +276,6 @@ static uint16_t find_sport(void)
 */
 static int send_small_packet(mux_itunes *dev, enum mux_protocol proto, void *header, const void *data, int length)
 {
-	uint8_t buffer[MPACKET_SIZE] = {0};
 	int hdrlen;
 	int res;	
 	uint32_t trueSend = 0;
@@ -289,12 +300,12 @@ static int send_small_packet(mux_itunes *dev, enum mux_protocol proto, void *hea
 
 	int total = mux_header_size + hdrlen + length;
 
-	if(total > sizeof(buffer)){
+	if(total > MPACKET_SIZE){
 		PRODEBUG("Tried to send setup packet larger than 512Bytes (hdr %d data %d total %d) to device\r\n", 
 							hdrlen, length, total);
 		return -1;
 	}
-	struct mux_header *mhdr = (struct mux_header *)buffer;
+	struct mux_header *mhdr = (struct mux_header *)usProTmpBuffer;
 	mhdr->protocol = htonl(proto);
 	mhdr->length = htonl(total);
 	if (dev->version >= 2) {
@@ -307,11 +318,11 @@ static int send_small_packet(mux_itunes *dev, enum mux_protocol proto, void *hea
 		mhdr->rx_seq = htons(dev->rx_seq);
 		dev->tx_seq++;
 	}
-	memcpy(buffer + mux_header_size, header, hdrlen);
+	memcpy(usProTmpBuffer + mux_header_size, header, hdrlen);
 	if(data && length)
-		memcpy(buffer + mux_header_size + hdrlen, data, length);
+		memcpy(usProTmpBuffer + mux_header_size + hdrlen, data, length);
 	
-	if((res = usUsb_BlukPacketSend(&(dev->usbdev), buffer, 
+	if((res = usUsb_BlukPacketSend(&(dev->usbdev), usProTmpBuffer, 
 						total, &trueSend)) < 0 || total != trueSend) {
 		PRODEBUG("usb_send failed while sending packet (len %d-->%d) to device: %d\r\n", 
 							total, trueSend, res);
@@ -442,7 +453,6 @@ static int send_tcp_ack(mux_itunes *conn)
 
 static int receive_ack(mux_itunes *uSdev)
 {
-	uint8_t buffer[MPACKET_SIZE] = {0};
 	uint32_t actual_length = 0;	
 	uint8_t *payload = NULL;
 	uint32_t payload_length;
@@ -451,13 +461,13 @@ static int receive_ack(mux_itunes *uSdev)
 	if(!uSdev){
 		return  PROTOCOL_REPARA;
 	}
-	if(usUsb_BlukPacketReceiveTmout(&(uSdev->usbdev), buffer, 
+	if(usUsb_BlukPacketReceiveTmout(&(uSdev->usbdev), usProTmpBuffer, 
 								uSdev->usbdev.wMaxPacketSize, &actual_length, 1000)){
 		PRODEBUG("Receive ios Package ACK Error\r\n");
 		return PROTOCOL_REGEN;
 	}
 	/*decode ack*/
-	struct mux_header *mhdr =  (struct mux_header *)buffer;	
+	struct mux_header *mhdr =  (struct mux_header *)usProTmpBuffer;	
 	int mux_header_size = ((uSdev->version < 2) ? 8 : sizeof(struct mux_header));
 	
 	if (uSdev->version >= 2) {
@@ -496,13 +506,12 @@ static void resetReceive(void)
 		int mux_header_size = ((uSdev->version < 2) ? 8 : sizeof(struct mux_header));
 		
 		while(uSdev->tcpinfo.rx_ack != uSdev->tcpinfo.tx_seq){
-			uint8_t rstbuf[MPACKET_SIZE] = {0};
 			uint32_t actual_length;			
 			struct tcphdr *th;
 			
 			PRODEBUG("Reset Opeartion Need To receive RX_ACK[%u<--->%u]\r\n", 
 							uSdev->tcpinfo.rx_ack, uSdev->tcpinfo.tx_seq);
-			if((rc = usUsb_BlukPacketReceiveTmout(&(uSdev->usbdev), rstbuf, 
+			if((rc = usUsb_BlukPacketReceiveTmout(&(uSdev->usbdev), usProTmpBuffer, 
 									uSdev->usbdev.wMaxPacketSize, &actual_length, 1000)) != 0){
 				if(rc == USB_DISCNT){
 					PRODEBUG("Device Disconncet\r\n");
@@ -512,7 +521,7 @@ static void resetReceive(void)
 				}	
 				break;
 			}
-			struct mux_header *mhdr =  (struct mux_header *)rstbuf;
+			struct mux_header *mhdr =  (struct mux_header *)usProTmpBuffer;
 			if (uSdev->version >= 2) {
 				uSdev->rx_seq = ntohs(mhdr->rx_seq);
 			}
@@ -1043,7 +1052,7 @@ uint8_t usProtocol_SwitchAOAMode(usb_device *usbdev)
 	USB_ClassInfo_MS_Host_t *MSInterfaceInfo = (USB_ClassInfo_MS_Host_t *)(usbdev->os_priv);
 	uint8_t version[2] = {0};
 	uint16_t ConfigDescriptorSize = 0;
-	uint8_t  ConfigDescriptorData[512], *PtrConfigDescriptorData = NULL;
+	uint8_t  *ConfigDescriptorData = usProTmpBuffer, *PtrConfigDescriptorData = NULL;
 	
 	if(!usbdev){
 		PRODEBUG("Parameter Empty..\r\n");
@@ -1052,7 +1061,7 @@ uint8_t usProtocol_SwitchAOAMode(usb_device *usbdev)
 	memset(&MSInterfaceInfo->State, 0x00, sizeof(MSInterfaceInfo->State));
 
 	if(usUsb_GetDeviceConfigDescriptor(usbdev, 1, &ConfigDescriptorSize, 
-						ConfigDescriptorData, sizeof(ConfigDescriptorData))){
+						ConfigDescriptorData, MPACKET_SIZE)){
 		PRODEBUG("Get Device ConfigDescriptor Error..\r\n");
 		return PROTOCOL_REGEN;
 	}
@@ -1364,7 +1373,6 @@ uint8_t usProtocol_GetIOSVersion(mux_itunes *uSdev)
 {
 	struct version_header rvh, *vh;	
 	uint8_t mux_header_size; 
-	uint8_t cbuffer[512] = {0};
 	uint32_t trueRecv = 0;
 	
 	if(!uSdev){
@@ -1392,11 +1400,11 @@ uint8_t usProtocol_GetIOSVersion(mux_itunes *uSdev)
 	}
 	/*Send Successful receive response*/
 	mux_header_size = ((uSdev->version < 2) ? 8 : sizeof(struct mux_header));
-	if(usUsb_BlukPacketReceive(&(uSdev->usbdev), cbuffer,  sizeof(cbuffer), &trueRecv)){
+	if(usUsb_BlukPacketReceive(&(uSdev->usbdev), usProTmpBuffer,  sizeof(usProTmpBuffer), &trueRecv)){
 		PRODEBUG("Error receive version request packet from phone\r\n");
 		return PROTOCOL_REINVAILD;
 	}
-	vh = (struct version_header *)(cbuffer+mux_header_size);
+	vh = (struct version_header *)(usProTmpBuffer+mux_header_size);
 	vh->major = ntohl(vh->major);
 	vh->minor = ntohl(vh->minor);
 	if(vh->major != 2 && vh->major != 1) {
@@ -1422,7 +1430,7 @@ uint8_t usProtocol_ConnectIOSPhone(mux_itunes *uSdev)
 	uint8_t mux_header_size; 
 	uint32_t trueRecv = 0;
 	struct tcphdr *th;
-	uint8_t cbuffer[512] = {0};
+	uint32_t protocol;
 
 	if(!uSdev){
 		return PROTOCOL_REPARA;
@@ -1440,29 +1448,30 @@ uint8_t usProtocol_ConnectIOSPhone(mux_itunes *uSdev)
 		return PROTOCOL_REINVAILD; //bleh
 	}
 	/*Wait TH_ACK*/
-	if(usUsb_BlukPacketReceive(&(uSdev->usbdev), cbuffer, sizeof(cbuffer), &trueRecv)){
+	if(usUsb_BlukPacketReceive(&(uSdev->usbdev), usProTmpBuffer, sizeof(usProTmpBuffer), &trueRecv)){
 		PRODEBUG("Error receive tcp ack response packet from phone\r\n");
 		return PROTOCOL_REINVAILD;
 	}
 	PRODEBUG("ACK Step1: Receive (%dBytes)\r\n", trueRecv);	
-	struct mux_header *mhdr = (struct mux_header *)cbuffer;
-	if(ntohl(mhdr->length) > (sizeof(cbuffer))){
+	struct mux_header *mhdr = (struct mux_header *)usProTmpBuffer;
+	if(ntohl(mhdr->length) > (sizeof(usProTmpBuffer))){
 		PRODEBUG("Setup Package is More than %u/%dByte\r\n", 
-				ntohl(mhdr->length), sizeof(cbuffer));
+				ntohl(mhdr->length), sizeof(usProTmpBuffer));
 		return PROTOCOL_REINVAILD;
 	}
 	/*Decode Package*/
-	switch(ntohl(mhdr->protocol)) {
+	protocol = ntohl(mhdr->protocol);
+	switch(protocol) {
 		case MUX_PROTO_VERSION:
 			PRODEBUG("MUX_PROTO_VERSION\r\n");
 			return PROTOCOL_REINVAILD;
 		case MUX_PROTO_CONTROL:
 			PRODEBUG("Receive MUX_PROTO_CONTROL[SameThing Happen] Continue Read TCP Packet...\r\n");		
-			if(usUsb_BlukPacketReceive(&(uSdev->usbdev), cbuffer, sizeof(cbuffer), &trueRecv)){
+			if(usUsb_BlukPacketReceive(&(uSdev->usbdev), usProTmpBuffer, sizeof(usProTmpBuffer), &trueRecv)){
 				PRODEBUG("Error receive tcp ack response packet from phone\r\n");
 				return PROTOCOL_REINVAILD;
 			}
-			mhdr = (struct mux_header *)cbuffer;
+			mhdr = (struct mux_header *)usProTmpBuffer;
 			/*Not Break continue to decode*/
 		case MUX_PROTO_TCP:			
 			mux_header_size = ((uSdev->version < 2) ? 8 : sizeof(struct mux_header));
