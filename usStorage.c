@@ -772,7 +772,6 @@ static int usStorage_diskWRITE(uint8_t *buffer, uint32_t recvSize, struct scsi_h
 					secSize, paySize);
 			if(paySize < USDISK_SECTOR-secSize){
 				memcpy(sector+secSize, ptr, paySize);
-				curSize += paySize;
 				secSize += paySize;
 				SDEBUGOUT("REQUEST WIRTE: PayLoad Not Enough Fill Sector[update to %dBytes CurSize:%dByte Payload:%dBytes]\r\n",
 						secSize, curSize, paySize);
