@@ -925,7 +925,7 @@ static int usStorage_Handle(void)
 		if(rc == PROTOCOL_DISCONNECT){
 			return PROTOCOL_DISCONNECT;
 		}else if(rc == PROTOCOL_RTIMOUT){
-			return 0;
+			return PROTOCOL_RTIMOUT;
 		}
 		SDEBUGOUT("usProtocol_RecvPackage Failed\r\n");
 		return rc;
@@ -2177,7 +2177,9 @@ int main(int argc, char **argv)
 {
 	pthread_t diskThread;
 	uint8_t phoneStatus, diskStatus;
-	
+	int ErrorCode, keepAlive = 0;
+	struct scsi_head header;
+
 	SDEBUGOUT("U-Storage Running.\r\n");
 
 	if(argc <= 1){
@@ -2209,11 +2211,23 @@ int main(int argc, char **argv)
 			usleep(300000);
 			continue;
 		}
-		
-		if(usStorage_Handle() == PROTOCOL_DISCONNECT){			
+		ErrorCode = usStorage_Handle();	
+		if(ErrorCode == PROTOCOL_DISCONNECT){			
 			SDEBUGOUT("Destory USB Resource.\r\n");
 			usProtocol_DeviceDisConnect();
+			keepAlive = 0;
 			continue;
+		}else if(ErrorCode == PROTOCOL_RTIMOUT){
+			if(keepAlive){
+				memset(&header, 0, sizeof(header));
+				header.head = SCSI_DEVICE_MAGIC;
+				header.ctrid = SCSI_TIMEOUT;
+				usStorage_sendHEAD(&header);		
+				SDEBUGOUT("Send Timeout Package.\r\n");
+			}
+			keepAlive++;
+		}else{
+			keepAlive = 0;
 		}
 		diskStatus = usbLinux.usbDiskStatus;
 		if(diskStatus != notifyNONE){

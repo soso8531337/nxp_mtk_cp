@@ -323,7 +323,7 @@ static int send_small_packet(mux_itunes *dev, enum mux_protocol proto, void *hea
 		memcpy(usProTmpBuffer + mux_header_size + hdrlen, data, length);
 	
 	if((res = usUsb_BlukPacketSend(&(dev->usbdev), usProTmpBuffer, 
-						total, &trueSend)) < 0 || total != trueSend) {
+						total, &trueSend)) != 0 || total != trueSend) {
 		PRODEBUG("usb_send failed while sending packet (len %d-->%d) to device: %d\r\n", 
 							total, trueSend, res);
 		return -res;
@@ -389,7 +389,7 @@ static int send_big_packet(mux_itunes *dev, enum mux_protocol proto, void *heade
 		memcpy(buffer + mux_header_size + hdrlen, data, length);
 	}
 	if((res = usUsb_BlukPacketSend(&(dev->usbdev), buffer, 
-										total, &trueSend)) < 0 || total != trueSend) {
+										total, &trueSend)) != 0 || total != trueSend) {
 		PRODEBUG("usb_send failed while sending packet (len %d->%d) to device: %d\r\n", 
 							total, trueSend, res);
 		return -res;
@@ -462,7 +462,7 @@ static int receive_ack(mux_itunes *uSdev)
 		return  PROTOCOL_REPARA;
 	}
 	if(usUsb_BlukPacketReceiveTmout(&(uSdev->usbdev), usProTmpBuffer, 
-								uSdev->usbdev.wMaxPacketSize, &actual_length, 1000)){
+								uSdev->usbdev.wMaxPacketSize, &actual_length, 500)){
 		PRODEBUG("Receive ios Package ACK Error\r\n");
 		return PROTOCOL_REGEN;
 	}
